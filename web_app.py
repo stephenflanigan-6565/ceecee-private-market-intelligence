@@ -2,6 +2,7 @@ import os
 from flask import Flask, jsonify, render_template_string
 from operator_report import build_snapshot
 from cloud_memory_check import verify_persistence
+from universe_collector import probe as probe_westhampton_universe
 
 app = Flask(__name__)
 
@@ -42,6 +43,16 @@ def cloud_memory_check():
         return jsonify(verify_persistence()), 200
     except Exception as e:
         return jsonify({"status":"degraded","error":type(e).__name__}), 503
+
+@app.get("/api/westhampton-universe/probe")
+def westhampton_universe_probe():
+    try:
+        result = probe_westhampton_universe()
+        code = 200 if result.get("status") == "ok" else 422
+        return jsonify(result), code
+    except Exception as e:
+        return jsonify({"status":"degraded","mode":"READ_ONLY_PROBE","error":type(e).__name__,
+                        "database_writes":0,"property_data_touched":False,"outreach_touched":False}), 503
 
 @app.get("/api/status")
 def api_status():
