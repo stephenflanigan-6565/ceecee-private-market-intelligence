@@ -355,3 +355,149 @@ def location_context_profile_v15p():
       'database_writes':0,'seller_scoring_touched':False,'signals_created':0,'events_created':0,
       'opportunity_data_touched':False,'outreach_touched':False
     }
+
+# V15Q market configuration: local context is data/configuration, not universal logic.
+# Future markets supply their own corridor/context definitions while the cohort engine stays unchanged.
+V15Q_MARKET_CONFIG = {
+    "market_id": "WESTHAMPTON_BEACH_NY",
+    "market_label": "Westhampton Beach",
+    "corridors": [
+        {"code": "DUNE_ROAD_CORRIDOR", "address_tokens": ["DUNE RD", "DUNE ROAD"]},
+    ],
+}
+
+
+def candidate_research_cohorts_v15q():
+    """READ ONLY property-level cohort preview across the full proven residential universe.
+
+    Every residential-side parcel is evaluated. Cohorts are overlapping factual research
+    lenses, not seller scores, probabilities, WATCH/INVESTIGATE states, or contact authority.
+    Local corridor definitions come from V15Q_MARKET_CONFIG so they are replaceable per market.
+    """
+    c=connect()
+    try:
+        canonical=execute(c,"SELECT COUNT(*) FROM properties WHERE district=? AND status='A'",(DISTRICT,)).fetchone()[0]
+        if canonical != EXPECTED_CANONICAL:
+            raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {canonical}")
+        rows=execute(c,"""
+          SELECT p.parcel_id,p.full_address,p.land_use,p.acreage,
+                 a.year_built,a.living_sqft,a.acreage,
+                 pc.cohort
+          FROM properties p
+          JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
+          LEFT JOIN assessment_evidence a
+            ON a.parcel_id=p.parcel_id AND a.source=? AND a.roll_year=?
+          WHERE p.district=? AND p.status='A'
+            AND pc.method_version='V15D_ORPTS_BROAD_COHORT_V1'
+            AND pc.cohort IN ('RESIDENTIAL_IMPROVED','RESIDENTIAL_VACANT_LAND')
+          ORDER BY p.parcel_id
+        """,(ASSESSMENT_SOURCE,ROLL_YEAR,DISTRICT)).fetchall()
+        if len(rows) != EXPECTED_RESIDENTIAL_SIDE:
+            raise RuntimeError(f"residential-side guard failed: expected {EXPECTED_RESIDENTIAL_SIDE}, found {len(rows)}")
+        transfer_rows=execute(c,"""
+          SELECT parcel_id,record_date,document_date,sale_date
+          FROM transfers WHERE source='Suffolk TaxParcelTransferHistory'
+        """).fetchall()
+        owner_rows=execute(c,"""
+          SELECT parcel_id,COUNT(*) FROM ownership_evidence
+          WHERE source='Suffolk TaxParcelOwner' GROUP BY parcel_id
+        """).fetchall()
+    finally:
+        c.close()
+
+    latest={}; transfer_count=Counter()
+    for r in transfer_rows:
+        pid=str(r[0]); transfer_count[pid]+=1
+        d=_date(r[3]) or _date(r[1]) or _date(r[2])
+        if d and (pid not in latest or d>latest[pid]): latest[pid]=d
+    owner_count={str(r[0]):int(r[1]) for r in owner_rows}
+
+    today=date.today()
+    cohort_members={
+        "DUNE_ROAD_HISTORY_RESEARCH":[],
+        "SEASONAL_RESIDENTIAL_HISTORY_RESEARCH":[],
+        "VACANT_RESIDENTIAL_LAND_HISTORY_RESEARCH":[],
+        "LARGER_LOT_HISTORY_RESEARCH":[],
+        "LARGER_IMPROVEMENT_HISTORY_RESEARCH":[],
+        "GENERAL_IMPROVED_HISTORY_RESEARCH":[],
+    }
+    properties_with_any=set()
+
+    for r in rows:
+        pid=str(r[0]); address=str(r[1]).strip() if r[1] not in (None,'') else None
+        lu=str(r[2]).strip() if r[2] not in (None,'') else None
+        factual_cohort=str(r[7])
+        ac=_num(r[6]) if _num(r[6]) is not None else _num(r[3])
+        yb=_int(r[4]); age=(today.year-yb) if yb and 1600<=yb<=today.year else None
+        sqft=_num(r[5]); tc=transfer_count.get(pid,0); oc=owner_count.get(pid,0)
+        ld=latest.get(pid); yrs=((today-ld).days/365.2425) if ld else None
+
+        t10=yrs is not None and yrs>=10; t20=yrs is not None and yrs>=20
+        age25=age is not None and age>=25; acre1=ac is not None and ac>=1
+        sqft2500=sqft is not None and sqft>=2500; hist3=tc>=3
+        au=(address or '').upper()
+        corridor_codes=[]
+        for cfg in V15Q_MARKET_CONFIG["corridors"]:
+            if any(tok in au for tok in cfg["address_tokens"]): corridor_codes.append(cfg["code"])
+        dune="DUNE_ROAD_CORRIDOR" in corridor_codes
+        seasonal=(lu=='260'); vacant=(factual_cohort=='RESIDENTIAL_VACANT_LAND'); improved=(factual_cohort=='RESIDENTIAL_IMPROVED')
+
+        reasons=[]
+        if t10: reasons.append("LATEST_TRANSFER_10Y_PLUS")
+        if t20: reasons.append("LATEST_TRANSFER_20Y_PLUS")
+        if age25: reasons.append("PROPERTY_AGE_25Y_PLUS")
+        if acre1: reasons.append("ACREAGE_1_PLUS")
+        if sqft2500: reasons.append("LIVING_SQFT_2500_PLUS")
+        if hist3: reasons.append("TRANSFER_HISTORY_3_PLUS")
+        if seasonal: reasons.append("SEASONAL_RESIDENTIAL_LANDUSE_260")
+        if vacant: reasons.append("RESIDENTIAL_VACANT_LAND")
+        reasons.extend(corridor_codes)
+
+        base={
+            "parcel_id":pid,"address":address,"factual_cohort":factual_cohort,"land_use":lu,
+            "latest_recorded_transfer_date":ld.isoformat() if ld else None,
+            "latest_recorded_transfer_age_years":round(yrs,1) if yrs is not None else None,
+            "transfer_history_records":tc,"ownership_evidence_records":oc,
+            "property_age_years":age,"acreage":ac,"living_sqft":sqft,
+            "reason_codes":reasons,
+        }
+        memberships=[]
+        if dune and t10: memberships.append("DUNE_ROAD_HISTORY_RESEARCH")
+        if seasonal and t20: memberships.append("SEASONAL_RESIDENTIAL_HISTORY_RESEARCH")
+        if vacant and t20: memberships.append("VACANT_RESIDENTIAL_LAND_HISTORY_RESEARCH")
+        if acre1 and t20: memberships.append("LARGER_LOT_HISTORY_RESEARCH")
+        if sqft2500 and t20: memberships.append("LARGER_IMPROVEMENT_HISTORY_RESEARCH")
+        if improved and t20 and age25 and hist3: memberships.append("GENERAL_IMPROVED_HISTORY_RESEARCH")
+        for name in memberships:
+            item=dict(base); item["research_cohort"]=name
+            cohort_members[name].append(item); properties_with_any.add(pid)
+
+    counts={k:len(v) for k,v in cohort_members.items()}
+    # Full property-level membership is returned so the preview is auditable; cohorts may overlap.
+    return {
+      "status":"ok","version":"V15Q","mode":"READ_ONLY_CANDIDATE_RESEARCH_COHORT_PREVIEW",
+      "database_backend":backend(),"generated_at":utc(),
+      "market_config":{"market_id":V15Q_MARKET_CONFIG["market_id"],"market_label":V15Q_MARKET_CONFIG["market_label"],
+                       "corridor_codes":[x["code"] for x in V15Q_MARKET_CONFIG["corridors"]],
+                       "architecture":"BUILD_ONCE_CONFIGURE_BY_MARKET_MEASURE_LOCALLY"},
+      "scope":{"district":DISTRICT,"canonical_active_parcels":canonical,"residential_side_parcels":len(rows),
+               "all_residential_parcels_evaluated":True},
+      "cohort_counts":counts,"unique_properties_in_one_or_more_research_cohorts":len(properties_with_any),
+      "cohort_members":cohort_members,
+      "cohort_definitions":{
+        "DUNE_ROAD_HISTORY_RESEARCH":"Configured local corridor + latest recorded transfer 10y+.",
+        "SEASONAL_RESIDENTIAL_HISTORY_RESEARCH":"Land-use 260 + latest recorded transfer 20y+.",
+        "VACANT_RESIDENTIAL_LAND_HISTORY_RESEARCH":"Persisted residential-vacant cohort + latest recorded transfer 20y+.",
+        "LARGER_LOT_HISTORY_RESEARCH":"Acreage 1+ + latest recorded transfer 20y+.",
+        "LARGER_IMPROVEMENT_HISTORY_RESEARCH":"Living area 2,500+ sqft + latest recorded transfer 20y+.",
+        "GENERAL_IMPROVED_HISTORY_RESEARCH":"Persisted improved-residential cohort + latest recorded transfer 20y+ + property age 25y+ + 3+ transfer-history records."
+      },
+      "interpretation_limits":[
+        "Westhampton Beach is the pilot market; Dune Road is only one configured local cohort and is not required for inclusion elsewhere.",
+        "Research cohorts overlap and are factual lenses only; membership is not a seller score, probability, WATCH/INVESTIGATE state, ranking, or contact authorization.",
+        "Latest recorded transfer age is not asserted to equal owner tenure.",
+        "Thresholds remain research lenses and are not universal rules; future markets are measured locally and use market configuration rather than hard-coded Westhampton assumptions."
+      ],
+      "database_writes":0,"seller_scoring_touched":False,"signals_created":0,"events_created":0,
+      "opportunity_data_touched":False,"outreach_touched":False
+    }
