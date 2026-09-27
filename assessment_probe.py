@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from db import connect, execute, backend
 
-VERSION="V15K2"
-MODE="READ_ONLY_NYS_ORPTS_ASSESSMENT_VALUE_SOURCE_PROBE"
+VERSION="V15K3"
+MODE="READ_ONLY_NYS_ORPTS_ASSESSMENT_VALUE_SOURCE_PROBE_CANONICAL_KEY_REPAIR"
 DISTRICT="0905"
 SWIS="473607"
 EXPECTED_CANONICAL=2545
@@ -40,6 +40,26 @@ def norm_component(value):
         except InvalidOperation: return None
 
 def key(section,block,lot): return (norm_component(section),norm_component(block),norm_component(lot))
+
+def canonical_component(value, scale):
+    """Decode Suffolk fixed-width canonical S/B/L storage to ORPTS print-key units.
+
+    Canonical examples observed in V15K2:
+      section 00100 -> 1
+      block   01000 -> 1
+      lot     01001 -> 1.001
+    """
+    s=str(value or "").strip()
+    if not s: return None
+    try:
+        return norm_component(Decimal(s) / Decimal(scale))
+    except InvalidOperation:
+        return None
+
+def canonical_key(section,block,lot):
+    return (canonical_component(section,100),
+            canonical_component(block,1000),
+            canonical_component(lot,1000))
 
 def key_from_sbl(value):
     s=str(value or "").strip()
@@ -82,7 +102,7 @@ def probe_assessment_v15k():
         raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {len(rows)}")
 
     canonical={}
-    for r in rows: canonical.setdefault(key(r[1],r[2],r[3]),[]).append(str(r[0]))
+    for r in rows: canonical.setdefault(canonical_key(r[1],r[2],r[3]),[]).append(str(r[0]))
     canonical_collisions={k:v for k,v in canonical.items() if None not in k and len(v)>1}
 
     pages,state_rows=fetch_state_rows()
@@ -119,7 +139,7 @@ def probe_assessment_v15k():
       },
       "sample_unmatched_state":["-".join(x for x in k if x is not None) for k in unmatched_state[:10]],
       "sample_unmatched_canonical":[{"normalized_taxmap":"-".join(x for x in k if x is not None),"parcel_ids":canonical[k][:3]} for k in unmatched_canonical[:10]],
-      "important_scope_note":"NYS public service currently exposes 2025 ORPTS assessment-roll attributes; 2026 Southampton roll remains a later annual-snapshot enrichment, not a blocker.",
+      "important_scope_note":"V15K3 repairs only the canonical Suffolk fixed-width S/B/L normalization discovered by V15K2. NYS public service currently exposes 2025 ORPTS assessment-roll attributes; 2026 Southampton roll remains a later annual-snapshot enrichment, not a blocker.",
       "database_writes":0,"assessment_data_touched":False,"seller_scoring_touched":False,
       "opportunity_data_touched":False,"outreach_touched":False
     }
