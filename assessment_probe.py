@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from db import connect, execute, backend
 
-VERSION="V15K5"
-MODE="READ_ONLY_NYS_ORPTS_ASSESSMENT_VALUE_SOURCE_PROBE_SECTION_SUFFIX_REPAIR"
+VERSION="V15K6"
+MODE="READ_ONLY_NYS_ORPTS_ASSESSMENT_RESIDUAL_DIAGNOSTIC"
 DISTRICT="0905"
 SWIS="473607"
 EXPECTED_CANONICAL=2545
@@ -94,7 +94,7 @@ def _fetch_page(offset, page_size=2000):
       "f":"json"
     }
     url=SERVICE+"?"+urllib.parse.urlencode(params)
-    req=urllib.request.Request(url,headers={"User-Agent":"Private-Market-Intelligence/V15K5"})
+    req=urllib.request.Request(url,headers={"User-Agent":"Private-Market-Intelligence/V15K6"})
     with urllib.request.urlopen(req,timeout=30) as r:
         payload=json.loads(r.read().decode("utf-8"))
     if "error" in payload: raise RuntimeError(f"NYS ArcGIS error: {payload['error']}")
@@ -156,9 +156,15 @@ def probe_assessment_v15k():
         "assessed_total":present("TOTAL_AV"),"full_market_value":present("FULL_MARKET_VAL"),"year_built":present("YR_BLT"),
         "living_sqft":present("SQFT_LIVING"),"bedrooms":present("NBR_BEDROOMS"),"full_baths":present("NBR_FULL_BATHS")
       },
-      "sample_unmatched_state":["-".join(x for x in k if x is not None) for k in unmatched_state[:10]],
-      "sample_unmatched_canonical":[{"normalized_taxmap":"-".join(x for x in k if x is not None),"parcel_ids":canonical[k][:3]} for k in unmatched_canonical[:10]],
-      "important_scope_note":"V15K5 repairs the remaining Suffolk section-suffix encoding exposed by V15K4: canonical 11.01 corresponds to ORPTS 11.001. Block and lot normalization remain unchanged. NYS public service currently exposes 2025 ORPTS assessment-roll attributes; 2026 Southampton roll remains a later annual-snapshot enrichment, not a blocker.",
+      "sample_unmatched_state":["-".join(x for x in k if x is not None) for k in unmatched_state[:25]],
+      "sample_unmatched_canonical":[{"normalized_taxmap":"-".join(x for x in k if x is not None),"parcel_ids":canonical[k][:3]} for k in unmatched_canonical[:25]],
+      "residual_diagnostic":{
+        "unparsable_raw_values":[str(x) for x in unparsable[:100]],
+        "unparsable_raw_unique_count":len(set(str(x) for x in unparsable)),
+        "all_unmatched_state_keys":["-".join(x for x in k if x is not None) for k in unmatched_state[:100]],
+        "unmatched_canonical_sample_count":min(100,len(unmatched_canonical))
+      },
+      "important_scope_note":"V15K6 is residual diagnostics only. It preserves V15K5 normalization and exposes bounded raw unparsable NYS tax-map values plus larger unmatched samples so remaining differences can be classified without guessing. NYS public service currently exposes 2025 ORPTS assessment-roll attributes; 2026 Southampton roll remains later enrichment.",
       "database_writes":0,"assessment_data_touched":False,"seller_scoring_touched":False,
       "opportunity_data_touched":False,"outreach_touched":False
     }
