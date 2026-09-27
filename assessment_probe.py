@@ -12,13 +12,15 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from db import connect, execute, backend
 
-VERSION="V15K7"
-MODE="READ_ONLY_NYS_ORPTS_ASSESSMENT_RAW_SBL_REPAIR"
+VERSION="V15K8"
+MODE="READ_ONLY_ASSESSMENT_PARCEL_LINEAGE_RESIDUAL_DIAGNOSTIC"
 DISTRICT="0905"
 SWIS="473607"
 EXPECTED_CANONICAL=2545
 SOURCE="NYS ITS Tax Parcels Public / ORPTS assessment-roll attributes"
 SERVICE="https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/FeatureServer/1/query"
+SUFFOLK_CURRENT="https://gis.suffolkcountyny.gov/server/rest/services/LocalGovernmentSQLData/TaxParcelPolygon/FeatureServer/0/query"
+SUFFOLK_HISTORIC="https://gis.suffolkcountyny.gov/server/rest/services/LocalGovernmentSQLData/TaxParcelHistoricPolygon/FeatureServer/0/query"
 OUT_FIELDS="OBJECTID,SWIS,SBL,PRINT_KEY,PROP_CLASS,LAND_AV,TOTAL_AV,FULL_MARKET_VAL,YR_BLT,ACRES,ROLL_YR,PARCEL_ADDR,SQFT_LIVING,NBR_FULL_BATHS,NBR_BEDROOMS,BLDG_STYLE_DESC,USED_AS_DESC"
 
 def utc(): return datetime.now(timezone.utc).isoformat()
@@ -113,7 +115,7 @@ def _fetch_page(offset, page_size=2000):
       "f":"json"
     }
     url=SERVICE+"?"+urllib.parse.urlencode(params)
-    req=urllib.request.Request(url,headers={"User-Agent":"Private-Market-Intelligence/V15K7"})
+    req=urllib.request.Request(url,headers={"User-Agent":"Private-Market-Intelligence/V15K8"})
     with urllib.request.urlopen(req,timeout=30) as r:
         payload=json.loads(r.read().decode("utf-8"))
     if "error" in payload: raise RuntimeError(f"NYS ArcGIS error: {payload['error']}")
@@ -130,6 +132,23 @@ def fetch_state_rows():
         offset += len(batch)
         if pages>10: raise RuntimeError("NYS assessment pagination guard exceeded")
     return pages,features
+
+def _fetch_suffolk(service, where, out_fields):
+    params={"where":where,"outFields":out_fields,"returnGeometry":"false","resultRecordCount":"2000","f":"json"}
+    url=service+"?"+urllib.parse.urlencode(params)
+    req=urllib.request.Request(url,headers={"User-Agent":"Private-Market-Intelligence/V15K8"})
+    with urllib.request.urlopen(req,timeout=30) as r:
+        payload=json.loads(r.read().decode("utf-8"))
+    if "error" in payload: raise RuntimeError(f"Suffolk ArcGIS error: {payload['error']}")
+    return [(f.get("attributes") or {}) for f in (payload.get("features") or [])]
+
+def _epoch_iso(v):
+    if v in (None,""): return None
+    try: return datetime.fromtimestamp(float(v)/1000,timezone.utc).date().isoformat()
+    except Exception: return None
+
+def _suffolk_key(a):
+    return canonical_key(a.get("SECTION"),a.get("BLOCK"),a.get("LOT"))
 
 def probe_assessment_v15k():
     c=connect()
@@ -155,6 +174,48 @@ def probe_assessment_v15k():
     unmatched_state=sorted(state_keys-set(canonical))
     unmatched_canonical=sorted(set(canonical)-state_keys)
     matched_parcels=sum(len(canonical[k]) for k in matched)
+
+    # V15K8: classify only the residuals against Suffolk current/historic parcel facts.
+    # No geometry inference and no forced parent/child match is made here.
+    current_rows=_fetch_suffolk(SUFFOLK_CURRENT, f"DISTRICT = '{DISTRICT}' AND STATUS = 'A'", "PARCELID,SECTION,BLOCK,LOT,CREATEDATE,LASTUPDATE,STATUS")
+    historic_rows=_fetch_suffolk(SUFFOLK_HISTORIC, f"DISTRICT = '{DISTRICT}'", "PARCELID,SECTION,BLOCK,LOT,CREATEDATE,LASTUPDATE,STATUS")
+    current_by_key={_suffolk_key(a):a for a in current_rows if None not in _suffolk_key(a)}
+    historic_by_key={}
+    for a in historic_rows:
+        hk=_suffolk_key(a)
+        if None not in hk: historic_by_key.setdefault(hk,[]).append(a)
+
+    residual_classes=Counter(); residual_details=[]
+    for ck in unmatched_canonical:
+        ca=current_by_key.get(ck)
+        hist=historic_by_key.get(ck,[])
+        created=_epoch_iso(ca.get("CREATEDATE")) if ca else None
+        if hist:
+            cls="CURRENT_KEY_ALSO_IN_HISTORIC"
+        elif created and created >= "2025-01-01":
+            cls="CURRENT_PARCEL_CREATED_2025_OR_LATER"
+        elif created:
+            cls="CURRENT_PARCEL_PREDATES_2025_BUT_NO_ORPTS_MATCH"
+        else:
+            cls="UNRESOLVED_NO_CREATE_DATE"
+        residual_classes[cls]+=len(canonical[ck])
+        if len(residual_details)<100:
+            residual_details.append({
+              "normalized_taxmap":"-".join(x for x in ck if x is not None),
+              "parcel_ids":canonical[ck][:3],"classification":cls,
+              "current_create_date":created,
+              "current_last_update":_epoch_iso(ca.get("LASTUPDATE")) if ca else None,
+              "historic_exact_key_records":len(hist)
+            })
+
+    state_residual_historic=[]
+    for sk in unmatched_state[:100]:
+        hs=historic_by_key.get(sk,[])
+        state_residual_historic.append({
+          "normalized_taxmap":"-".join(x for x in sk if x is not None),
+          "historic_exact_key_records":len(hs),
+          "historic_parcel_ids":[str(x.get("PARCELID")) for x in hs[:5]]
+        })
 
     def present(field): return sum(1 for _,a in parsed if a.get(field) not in (None,""))
     roll_years=sorted({a.get("ROLL_YR") for _,a in parsed if a.get("ROLL_YR") is not None})
@@ -183,7 +244,15 @@ def probe_assessment_v15k():
         "all_unmatched_state_keys":["-".join(x for x in k if x is not None) for k in unmatched_state[:100]],
         "unmatched_canonical_sample_count":min(100,len(unmatched_canonical))
       },
-      "important_scope_note":"V15K7 adds only the deterministic 20-digit Suffolk raw-SBL parser proven by V15K6 residual evidence. Existing V15K5 human-readable normalization remains unchanged. This is still measurement-only; 2025 ORPTS attributes are not persisted.",
+      "parcel_lineage_residual_diagnostic":{
+        "suffolk_current_records_fetched":len(current_rows),
+        "suffolk_historic_records_fetched":len(historic_rows),
+        "canonical_residual_class_counts":dict(residual_classes),
+        "canonical_residual_details":residual_details,
+        "state_residual_historic_exact_key_check":state_residual_historic,
+        "classification_limit":"Exact S/B/L and source create/update dates only; no geometry-based parent-child inference is made in V15K8."
+      },
+      "important_scope_note":"V15K8 preserves the proven V15K7 parser and 97.84% assessment join. It classifies only the remaining residuals using Suffolk current/historic parcel facts and source dates; it does not force lineage matches or persist assessment data.",
       "database_writes":0,"assessment_data_touched":False,"seller_scoring_touched":False,
       "opportunity_data_touched":False,"outreach_touched":False
     }
