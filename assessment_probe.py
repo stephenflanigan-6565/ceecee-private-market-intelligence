@@ -1,28 +1,25 @@
 #!/usr/bin/env python3
-"""V15K — Westhampton Beach 2026 assessment/value source probe.
+"""V15K2 — NYS ORPTS assessment/value source probe.
 
-READ ONLY. Downloads the official Southampton assessment-roll PDF, extracts
-Westhampton Beach tax-map identifiers, normalizes section/block/lot, and
-measures the join against the locked canonical Suffolk parcel universe.
-No assessment rows are persisted in V15K.
+READ ONLY. Replaces the rejected live Southampton-PDF transport path with the
+public NYS Tax Parcels Feature Service, whose attributes are populated from
+ORPTS local assessment-roll data. V15K2 measures coverage/join quality only.
+No assessment rows are persisted.
 """
-import io, re, urllib.request, urllib.error
+import json, re, urllib.parse, urllib.request
 from collections import Counter
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from db import connect, execute, backend
 
-VERSION="V15K"
-MODE="READ_ONLY_ASSESSMENT_VALUE_SOURCE_PROBE"
+VERSION="V15K2"
+MODE="READ_ONLY_NYS_ORPTS_ASSESSMENT_VALUE_SOURCE_PROBE"
 DISTRICT="0905"
 SWIS="473607"
 EXPECTED_CANONICAL=2545
-ROLL_YEAR=2026
-SOURCE="Town of Southampton 2026 Assessment Roll — Westhampton Beach"
-PDF_URL="https://www.southamptontownny.gov/DocumentCenter/View/46937/Westhampton-Beach-473607"
-PDF_MIRROR_URL="https://www.southamptontownnypolice.gov/DocumentCenter/View/46937/Westhampton-Beach-473607"
-# Example official roll form: 473607 012.000-0002-035.000
-TAXMAP_RE=re.compile(r"\b473607\s+(\d{1,3}(?:\.\d+)?)\s*-\s*(\d{1,4}(?:\.\d+)?)\s*-\s*(\d{1,3}(?:\.\d+)?)\b")
+SOURCE="NYS ITS Tax Parcels Public / ORPTS assessment-roll attributes"
+SERVICE="https://gisservices.its.ny.gov/arcgis/rest/services/NYS_Tax_Parcels_Public/FeatureServer/1/query"
+OUT_FIELDS="OBJECTID,SWIS,SBL,PRINT_KEY,PROP_CLASS,LAND_AV,TOTAL_AV,FULL_MARKET_VAL,YR_BLT,ACRES,ROLL_YR,PARCEL_ADDR,SQFT_LIVING,NBR_FULL_BATHS,NBR_BEDROOMS,BLDG_STYLE_DESC,USED_AS_DESC"
 
 def utc(): return datetime.now(timezone.utc).isoformat()
 
@@ -34,51 +31,47 @@ def norm_component(value):
         if d==d.to_integral(): return str(d.quantize(Decimal(1)))
         return format(d.normalize(),"f")
     except InvalidOperation:
-        # Defensive fallback for source formatting: digits and decimal point only.
         s="".join(ch for ch in s if ch.isdigit() or ch==".")
         if not s: return None
-        try: return format(Decimal(s).normalize(),"f").rstrip("0").rstrip(".") or "0"
+        try:
+            d=Decimal(s)
+            if d==d.to_integral(): return str(d.quantize(Decimal(1)))
+            return format(d.normalize(),"f")
         except InvalidOperation: return None
 
-def key(section,block,lot):
-    return (norm_component(section),norm_component(block),norm_component(lot))
+def key(section,block,lot): return (norm_component(section),norm_component(block),norm_component(lot))
 
-def _download_pdf(url, timeout=45):
-    req=urllib.request.Request(url,headers={
-        "User-Agent":"Mozilla/5.0 (compatible; Private-Market-Intelligence/V15K1)",
-        "Accept":"application/pdf,*/*;q=0.8",
-        "Connection":"close",
-    })
-    with urllib.request.urlopen(req,timeout=timeout) as r:
-        data=r.read()
-        ctype=(r.headers.get("Content-Type") or "").lower()
-    if len(data)<10000: raise RuntimeError("assessment roll download unexpectedly small")
-    if not data.startswith(b"%PDF"): raise RuntimeError(f"assessment roll response is not PDF ({ctype})")
-    return data
+def key_from_sbl(value):
+    s=str(value or "").strip()
+    # ORPTS/Suffolk form commonly: 012.000-0001-013.000
+    m=re.search(r"(\d{1,3}(?:\.\d+)?)\s*-\s*(\d{1,4}(?:\.\d+)?)\s*-\s*(\d{1,3}(?:\.\d+)?)",s)
+    if not m: return None
+    return key(*m.groups())
 
-def fetch_pdf():
-    errors=[]
-    for url in (PDF_URL, PDF_MIRROR_URL):
-        try:
-            return _download_pdf(url), url
-        except Exception as e:
-            errors.append(f"{url}: {type(e).__name__}: {e}")
-    raise RuntimeError("assessment roll download failed from all official hosts: " + " | ".join(errors))
+def _fetch_page(offset, page_size=2000):
+    params={
+      "where":f"SWIS='{SWIS}'", "outFields":OUT_FIELDS, "returnGeometry":"false",
+      "resultOffset":str(offset), "resultRecordCount":str(page_size), "orderByFields":"OBJECTID",
+      "f":"json"
+    }
+    url=SERVICE+"?"+urllib.parse.urlencode(params)
+    req=urllib.request.Request(url,headers={"User-Agent":"Private-Market-Intelligence/V15K2"})
+    with urllib.request.urlopen(req,timeout=30) as r:
+        payload=json.loads(r.read().decode("utf-8"))
+    if "error" in payload: raise RuntimeError(f"NYS ArcGIS error: {payload['error']}")
+    return payload
 
-def extract_taxmaps(pdf_bytes):
-    try:
-        from pypdf import PdfReader
-    except ImportError as e:
-        raise RuntimeError("pypdf dependency missing") from e
-    reader=PdfReader(io.BytesIO(pdf_bytes))
-    matches=[]; pages_with_taxmaps=0
-    for page_no,page in enumerate(reader.pages,1):
-        text=page.extract_text() or ""
-        page_matches=TAXMAP_RE.findall(text)
-        if page_matches:
-            pages_with_taxmaps += 1
-            matches.extend((page_no,*m) for m in page_matches)
-    return len(reader.pages),pages_with_taxmaps,matches
+def fetch_state_rows():
+    features=[]; offset=0; pages=0
+    while True:
+        payload=_fetch_page(offset); pages+=1
+        batch=payload.get("features") or []
+        features.extend((f.get("attributes") or {}) for f in batch)
+        if not payload.get("exceededTransferLimit") and len(batch)<2000: break
+        if not batch: break
+        offset += len(batch)
+        if pages>10: raise RuntimeError("NYS assessment pagination guard exceeded")
+    return pages,features
 
 def probe_assessment_v15k():
     c=connect()
@@ -89,35 +82,44 @@ def probe_assessment_v15k():
         raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {len(rows)}")
 
     canonical={}
-    for r in rows:
-        k=key(r[1],r[2],r[3])
-        canonical.setdefault(k,[]).append(str(r[0]))
+    for r in rows: canonical.setdefault(key(r[1],r[2],r[3]),[]).append(str(r[0]))
     canonical_collisions={k:v for k,v in canonical.items() if None not in k and len(v)>1}
 
-    pdf,source_url=fetch_pdf()
-    page_count,pages_with_taxmaps,matches=extract_taxmaps(pdf)
-    raw_keys=[key(sec,blk,lot) for _,sec,blk,lot in matches]
-    counts=Counter(raw_keys)
-    roll_keys=set(raw_keys)
-    matched=roll_keys & set(canonical)
-    unmatched_roll=sorted(roll_keys-set(canonical))
-    unmatched_canonical=sorted(set(canonical)-roll_keys)
+    pages,state_rows=fetch_state_rows()
+    parsed=[]; unparsable=[]
+    for a in state_rows:
+        k=key_from_sbl(a.get("SBL")) or key_from_sbl(a.get("PRINT_KEY"))
+        if k is None: unparsable.append(a.get("SBL") or a.get("PRINT_KEY"))
+        else: parsed.append((k,a))
+    counts=Counter(k for k,_ in parsed)
+    state_keys=set(counts)
+    matched=state_keys & set(canonical)
+    unmatched_state=sorted(state_keys-set(canonical))
+    unmatched_canonical=sorted(set(canonical)-state_keys)
     matched_parcels=sum(len(canonical[k]) for k in matched)
 
+    def present(field): return sum(1 for _,a in parsed if a.get(field) not in (None,""))
+    roll_years=sorted({a.get("ROLL_YR") for _,a in parsed if a.get("ROLL_YR") is not None})
     return {
       "status":"ok","version":VERSION,"mode":MODE,"database_backend":backend(),
-      "source":SOURCE,"source_url":source_url,"official_source_urls":[PDF_URL,PDF_MIRROR_URL],"roll_year":ROLL_YEAR,"swis":SWIS,"district":DISTRICT,
-      "generated_at":utc(),"pdf_bytes":len(pdf),"pdf_pages":page_count,"pages_with_taxmaps":pages_with_taxmaps,
-      "taxmap_occurrences_extracted":len(raw_keys),"unique_roll_taxmaps":len(roll_keys),
-      "duplicate_taxmap_occurrences":sum(n-1 for n in counts.values() if n>1),
+      "source":SOURCE,"source_service":SERVICE.rsplit('/query',1)[0],"swis":SWIS,"district":DISTRICT,
+      "generated_at":utc(),"measurement_only":True,"pages":pages,"records_fetched":len(state_rows),
+      "roll_years_present":roll_years,"unique_state_taxmaps":len(state_keys),
+      "unparsable_state_taxmaps":len(unparsable),"duplicate_state_taxmap_records":sum(n-1 for n in counts.values() if n>1),
       "canonical_active_parcels":len(rows),"canonical_unique_normalized_keys":len(canonical),
       "canonical_normalization_collisions":len(canonical_collisions),
-      "matched_unique_roll_taxmaps":len(matched),"matched_canonical_parcels":matched_parcels,
+      "matched_unique_state_taxmaps":len(matched),"matched_canonical_parcels":matched_parcels,
       "canonical_match_pct":round(100*matched_parcels/len(rows),2) if rows else 0,
-      "unmatched_roll_taxmaps":len(unmatched_roll),"unmatched_canonical_parcels":sum(len(canonical[k]) for k in unmatched_canonical),
-      "sample_unmatched_roll":["-".join(x for x in k if x is not None) for k in unmatched_roll[:10]],
+      "unmatched_state_taxmaps":len(unmatched_state),
+      "unmatched_canonical_parcels":sum(len(canonical[k]) for k in unmatched_canonical),
+      "field_coverage":{
+        "property_class":present("PROP_CLASS"),"acreage":present("ACRES"),"assessed_land":present("LAND_AV"),
+        "assessed_total":present("TOTAL_AV"),"full_market_value":present("FULL_MARKET_VAL"),"year_built":present("YR_BLT"),
+        "living_sqft":present("SQFT_LIVING"),"bedrooms":present("NBR_BEDROOMS"),"full_baths":present("NBR_FULL_BATHS")
+      },
+      "sample_unmatched_state":["-".join(x for x in k if x is not None) for k in unmatched_state[:10]],
       "sample_unmatched_canonical":[{"normalized_taxmap":"-".join(x for x in k if x is not None),"parcel_ids":canonical[k][:3]} for k in unmatched_canonical[:10]],
-      "fields_targeted_next":["property_class","acreage","assessed_land","assessed_total","market_value"],
+      "important_scope_note":"NYS public service currently exposes 2025 ORPTS assessment-roll attributes; 2026 Southampton roll remains a later annual-snapshot enrichment, not a blocker.",
       "database_writes":0,"assessment_data_touched":False,"seller_scoring_touched":False,
       "opportunity_data_touched":False,"outreach_touched":False
     }

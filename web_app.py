@@ -105,7 +105,7 @@ def westhampton_assessment_probe_v15k():
     try:
         return jsonify(probe_assessment_v15k()), 200
     except Exception as e:
-        return jsonify({"status":"error","version":"V15K","mode":"READ_ONLY_ASSESSMENT_VALUE_SOURCE_PROBE",
+        return jsonify({"status":"error","version":"V15K2","mode":"READ_ONLY_NYS_ORPTS_ASSESSMENT_VALUE_SOURCE_PROBE",
                         "error_type":type(e).__name__,"error":str(e)[:240],"database_writes":0,
                         "assessment_data_touched":False,"seller_scoring_touched":False,
                         "opportunity_data_touched":False,"outreach_touched":False}), 200
