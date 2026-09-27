@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import datetime, timezone, date
 from db import connect, execute, backend
 
-VERSION = "V15M2"
+VERSION = "V15M3"
 MODE = "READ_ONLY_DERIVED_INTELLIGENCE_POPULATION_PROFILE"
 DISTRICT = "0905"
 EXPECTED_CANONICAL = 2545
@@ -57,7 +57,7 @@ def profile_v15m():
         # defines residential vacant land as a selected exact-code set.
         rows=execute(c,"""
           SELECT p.parcel_id,p.land_use,p.acreage,p.source_created_at,p.source_last_update,
-                 a.property_class,a.acreage,a.full_market_value,a.year_built,a.living_sqft,
+                 a.property_class,a.acreage,a.full_market_value,a.assessed_total,a.assessed_land,a.year_built,a.living_sqft,
                  a.bedrooms,a.full_baths
           FROM properties p
           JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
@@ -92,6 +92,7 @@ def profile_v15m():
 
     today=date.today()
     assessment_present=0; year_built_present=0; sqft_present=0; fmv_present=0
+    fmv_nonnull=0; fmv_zero=0; assessed_total_nonnull=0; assessed_total_positive=0; assessed_land_nonnull=0; assessed_land_positive=0
     transfer_covered=0; latest_date_present=0; owner_covered=0
     tenure_bins=Counter(); transfer_bins=Counter(); age_bins=Counter(); fmv_bins=Counter(); acreage_bins=Counter()
     owner_party_bins=Counter(); landuse=Counter(); propclass=Counter()
@@ -114,14 +115,18 @@ def profile_v15m():
 
         pc=r[5]
         if pc not in (None,""): assessment_present+=1; propclass[str(pc)]+=1
-        yb=_int(r[8])
+        yb=_int(r[10])
         if yb and 1600 <= yb <= today.year:
             year_built_present+=1
             age=today.year-yb
             age_bins[_bucket(age,[10,25,50,75,100,float('inf')],["<10y","10-<25y","25-<50y","50-<75y","75-<100y","100y+"])]+=1
         else: age_bins["MISSING"]+=1
-        sqft=_num(r[9]); sqft_present += int(sqft is not None and sqft>0)
+        sqft=_num(r[11]); sqft_present += int(sqft is not None and sqft>0)
         fmv=_num(r[7])
+        at=_num(r[8]); al=_num(r[9])
+        fmv_nonnull += int(fmv is not None); fmv_zero += int(fmv == 0)
+        assessed_total_nonnull += int(at is not None); assessed_total_positive += int(at is not None and at>0)
+        assessed_land_nonnull += int(al is not None); assessed_land_positive += int(al is not None and al>0)
         if fmv is not None and fmv>0:
             fmv_present+=1
             fmv_bins[_bucket(fmv,[500000,1000000,2000000,3000000,5000000,10000000,float('inf')],["<$500k","$500k-<$1m","$1m-<$2m","$2m-<$3m","$3m-<$5m","$5m-<$10m","$10m+"])]+=1
@@ -138,7 +143,10 @@ def profile_v15m():
       "coverage":{"ownership_evidence_parcels":owner_covered,"transfer_history_parcels":transfer_covered,
                   "latest_transfer_date_parcels":latest_date_present,"assessment_2025_parcels":assessment_present,
                   "year_built_parcels":year_built_present,"living_sqft_parcels":sqft_present,
-                  "full_market_value_parcels":fmv_present},
+                  "full_market_value_parcels":fmv_present,
+                  "assessment_value_diagnostic":{"full_market_value_nonnull":fmv_nonnull,"full_market_value_zero":fmv_zero,
+                    "assessed_total_nonnull":assessed_total_nonnull,"assessed_total_positive":assessed_total_positive,
+                    "assessed_land_nonnull":assessed_land_nonnull,"assessed_land_positive":assessed_land_positive}},
       "distributions":{
         "latest_recorded_transfer_age":_sorted_counter(tenure_bins,["<1y","1-<3y","3-<5y","5-<10y","10-<20y","20-<30y","30y+","MISSING"]),
         "transfer_record_count":_sorted_counter(transfer_bins,["0","1","2","3-5","6-10","11+"]),
