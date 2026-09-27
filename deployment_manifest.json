@@ -1,0 +1,38 @@
+{
+  "bootstrap": [
+    "python",
+    "bootstrap_db.py"
+  ],
+  "preflight": [
+    "python",
+    "deploy_check.py"
+  ],
+  "jobs": {
+    "daily": [
+      "scheduler",
+      "adapters",
+      "governor",
+      "report"
+    ],
+    "weekly": [
+      "governor",
+      "report"
+    ],
+    "monthly": [
+      "adapters",
+      "governor",
+      "report"
+    ]
+  },
+  "environment_required": [
+    "DATABASE_URL"
+  ],
+  "environment_defaults": {
+    "CEECEE_DRY_RUN": "1",
+    "CEECEE_OUTREACH_ENABLED": "0"
+  },
+  "optional_credentials": [
+    "ATTOM_API_KEY",
+    "MLS_FEED_TOKEN"
+  ]
+}

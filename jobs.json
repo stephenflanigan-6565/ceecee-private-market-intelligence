@@ -1,0 +1,56 @@
+{
+  "daily": [
+    {
+      "job": "official_refresh",
+      "purpose": "parcel/owner/transfer refresh"
+    },
+    {
+      "job": "buyer_match",
+      "purpose": "genuine buyer-demand recheck"
+    },
+    {
+      "job": "governor",
+      "purpose": "re-evaluate research/contact state"
+    },
+    {
+      "job": "report",
+      "purpose": "operator scoreboard"
+    }
+  ],
+  "weekly": [
+    {
+      "job": "deep_recheck",
+      "purpose": "WATCH/INVESTIGATE reevaluation"
+    }
+  ],
+  "monthly": [
+    {
+      "job": "location_context",
+      "purpose": "zoning/building/context refresh"
+    },
+    {
+      "job": "historic_parcel",
+      "purpose": "parcel-lineage refresh"
+    }
+  ],
+  "publication_driven": [
+    {
+      "job": "assessment_roll",
+      "purpose": "new final assessment roll"
+    }
+  ],
+  "on_demand": [
+    {
+      "job": "attom",
+      "purpose": "optional commercial enrichment"
+    },
+    {
+      "job": "mls",
+      "purpose": "licensed listing-history enrichment"
+    },
+    {
+      "job": "eportal",
+      "purpose": "selected property document research"
+    }
+  ]
+}
