@@ -9,6 +9,7 @@ from db import connect, execute, backend
 BASE="https://gis.suffolkcountyny.gov/server/rest/services/LocalGovernmentSQLData"
 OWNER=BASE+"/TaxParcelOwner/FeatureServer/0/query"
 TRANSFER=BASE+"/TaxParcelTransferCurrent/FeatureServer/0/query"
+TRANSFER_HISTORY=BASE+"/TaxParcelTransferHistory/FeatureServer/0/query"
 DISTRICT_PREFIX="0905"
 PAGE=1000
 
@@ -115,4 +116,31 @@ def probe_owner_handshake():
     r.update({"source":"Suffolk County TaxParcelOwner","probe_parcel_id":pid,
               "records_returned":len(feats),"owner_names_requested":False,
               "owner_names_exposed_in_response":False,"bounded_probe":True})
+    return r
+
+
+def probe_transfer_history_handshake():
+    """V15G bounded one-parcel TaxParcelTransferHistory handshake. Read-only, no party names, no DB writes."""
+    pid=_one_canonical_id()
+    data=fetch(TRANSFER_HISTORY,{
+        "where":f"PARCELID = '{pid}'",
+        "outFields":"PARCELID,RECORDDATE,DOCNUM,DOCCODE,DOCDATE,ENTRYDATE,TRANSHISSEQ",
+        "returnGeometry":"false",
+        "resultRecordCount":5,
+        "orderByFields":"TRANSHISSEQ DESC",
+        "f":"json"
+    })
+    feats=data.get("features",[])
+    attrs=[x.get("attributes",{}) for x in feats]
+    r=_base("READ_ONLY_TRANSFER_HISTORY_HANDSHAKE")
+    r.update({
+        "source":"Suffolk County TaxParcelTransferHistory",
+        "probe_parcel_id":pid,
+        "records_returned":len(attrs),
+        "max_records_requested":5,
+        "party_names_requested":False,
+        "party_names_exposed_in_response":False,
+        "bounded_probe":True,
+        "records":[{k:a.get(k) for k in ("PARCELID","RECORDDATE","DOCNUM","DOCCODE","DOCDATE","ENTRYDATE","TRANSHISSEQ")} for a in attrs]
+    })
     return r
