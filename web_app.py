@@ -5,7 +5,7 @@ from cloud_memory_check import verify_persistence
 from universe_collector import probe as probe_westhampton_universe, populate as populate_westhampton_universe
 from universe_profile import profile as profile_westhampton_universe
 from universe_classification import preview as preview_westhampton_classification, persist as persist_westhampton_classification
-from ownership_transfer_probe import probe_owner_only, probe_transfer_only
+from ownership_transfer_probe import probe_owner_only, probe_transfer_only, probe_owner_handshake
 
 app = Flask(__name__)
 
@@ -94,6 +94,16 @@ def westhampton_classification_persist_v15e():
     except Exception as e:
         return jsonify({"status":"degraded","mode":"FACTUAL_COHORT_PERSISTENCE",
                         "error":type(e).__name__,"seller_scoring_touched":False,
+                        "opportunity_data_touched":False,"outreach_touched":False}), 503
+
+@app.get("/api/westhampton-universe/owner-handshake-v15f2")
+def westhampton_owner_handshake_v15f2():
+    try:
+        return jsonify(probe_owner_handshake()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","mode":"READ_ONLY_OWNER_SOURCE_HANDSHAKE",
+                        "error":str(e)[:120],"database_writes":0,"ownership_data_touched":False,
+                        "transfer_data_touched":False,"seller_scoring_touched":False,
                         "opportunity_data_touched":False,"outreach_touched":False}), 503
 
 @app.get("/api/westhampton-universe/owner-probe-v15f1")

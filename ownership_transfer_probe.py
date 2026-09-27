@@ -88,3 +88,31 @@ def probe_transfer_only():
               "records_outside_canonical_universe":sum(1 for p in pids if p not in canonical),
               "missing_sample_parcel_ids":missing[:10]})
     return r
+
+
+def _one_canonical_id():
+    c=connect()
+    try:
+        row=execute(c,"SELECT parcel_id FROM properties WHERE district=? AND active=1 ORDER BY parcel_id LIMIT 1",("0905",)).fetchone()
+        if not row:
+            raise RuntimeError("NO_CANONICAL_PARCEL")
+        return str(row[0])
+    finally:
+        c.close()
+
+def probe_owner_handshake():
+    """Bounded one-parcel upstream handshake; designed to complete well inside web-worker timeout."""
+    pid=_one_canonical_id()
+    data=fetch(OWNER,{
+        "where":f"PARCELID = '{pid}'",
+        "outFields":"PARCELID",
+        "returnGeometry":"false",
+        "resultRecordCount":1,
+        "f":"json"
+    })
+    feats=data.get("features",[])
+    r=_base("READ_ONLY_OWNER_SOURCE_HANDSHAKE")
+    r.update({"source":"Suffolk County TaxParcelOwner","probe_parcel_id":pid,
+              "records_returned":len(feats),"owner_names_requested":False,
+              "owner_names_exposed_in_response":False,"bounded_probe":True})
+    return r
