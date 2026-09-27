@@ -5,7 +5,7 @@ from cloud_memory_check import verify_persistence
 from universe_collector import probe as probe_westhampton_universe, populate as populate_westhampton_universe
 from universe_profile import profile as profile_westhampton_universe
 from universe_classification import preview as preview_westhampton_classification, persist as persist_westhampton_classification
-from ownership_transfer_probe import probe_owner_only, probe_transfer_only, probe_owner_handshake, probe_transfer_history_handshake
+from ownership_transfer_probe import probe_owner_only, probe_transfer_only, probe_owner_handshake, probe_transfer_history_handshake, probe_internal_failure_isolation
 
 app = Flask(__name__)
 
@@ -95,6 +95,19 @@ def westhampton_classification_persist_v15e():
         return jsonify({"status":"degraded","mode":"FACTUAL_COHORT_PERSISTENCE",
                         "error":type(e).__name__,"seller_scoring_touched":False,
                         "opportunity_data_touched":False,"outreach_touched":False}), 503
+
+
+@app.get("/api/westhampton-universe/internal-failure-isolation-v15h")
+def westhampton_internal_failure_isolation_v15h():
+    # Deliberately HTTP 200 even when a diagnostic stage fails so the platform cannot mask our evidence.
+    try:
+        return jsonify(probe_internal_failure_isolation()), 200
+    except Exception as e:
+        return jsonify({"status":"diagnostic_wrapper_failure","mode":"READ_ONLY_INTERNAL_FAILURE_ISOLATION",
+                        "error_type":type(e).__name__,"error":str(e)[:160],
+                        "database_writes":0,"property_data_touched":False,"ownership_data_touched":False,
+                        "transfer_data_touched":False,"seller_scoring_touched":False,
+                        "opportunity_data_touched":False,"outreach_touched":False}), 200
 
 @app.get("/api/westhampton-universe/transfer-history-handshake-v15g")
 def westhampton_transfer_history_handshake_v15g():

@@ -144,3 +144,71 @@ def probe_transfer_history_handshake():
         "records":[{k:a.get(k) for k in ("PARCELID","RECORDDATE","DOCNUM","DOCCODE","DOCDATE","ENTRYDATE","TRANSHISSEQ")} for a in attrs]
     })
     return r
+
+# V15H diagnostic constants
+PARCEL_CONTROL=BASE+"/TaxParcelPolygon/FeatureServer/0/query"
+
+def _diagnostic_call(label, url, params, timeout=10):
+    """Run one bounded upstream call and always return structured diagnostics."""
+    import time
+    started=time.monotonic()
+    u=url+"?"+urllib.parse.urlencode(params)
+    req=urllib.request.Request(u,headers={"User-Agent":"Private-Market-Intelligence/15H","Accept":"application/json"})
+    try:
+        with urllib.request.urlopen(req,timeout=timeout) as resp:
+            raw=resp.read()
+            http_status=getattr(resp,"status",200)
+        elapsed=round(time.monotonic()-started,3)
+        try:
+            data=json.loads(raw.decode("utf-8"))
+        except Exception as e:
+            return {"label":label,"ok":False,"stage":"JSON_PARSE","http_status":http_status,
+                    "elapsed_seconds":elapsed,"error_type":type(e).__name__,"response_bytes":len(raw)}
+        if "error" in data:
+            err=data.get("error") or {}
+            return {"label":label,"ok":False,"stage":"ARCGIS_RESPONSE","http_status":http_status,
+                    "elapsed_seconds":elapsed,"arcgis_code":err.get("code"),
+                    "arcgis_message":str(err.get("message",""))[:160]}
+        feats=data.get("features",[])
+        return {"label":label,"ok":True,"stage":"COMPLETE","http_status":http_status,
+                "elapsed_seconds":elapsed,"records_returned":len(feats),
+                "exceeded_transfer_limit":bool(data.get("exceededTransferLimit"))}
+    except urllib.error.HTTPError as e:
+        return {"label":label,"ok":False,"stage":"HTTP","http_status":e.code,
+                "elapsed_seconds":round(time.monotonic()-started,3),"error_type":"HTTPError"}
+    except urllib.error.URLError as e:
+        return {"label":label,"ok":False,"stage":"NETWORK",
+                "elapsed_seconds":round(time.monotonic()-started,3),"error_type":"URLError",
+                "reason_type":type(getattr(e,"reason",None)).__name__}
+    except Exception as e:
+        return {"label":label,"ok":False,"stage":"UNEXPECTED",
+                "elapsed_seconds":round(time.monotonic()-started,3),"error_type":type(e).__name__,
+                "error":str(e)[:160]}
+
+def probe_internal_failure_isolation():
+    """V15H: prove each common stage without writes; route must return HTTP 200 even on diagnostic failure."""
+    result=_base("READ_ONLY_INTERNAL_FAILURE_ISOLATION")
+    result.update({"version":"V15H","diagnostic_http_status_policy":"ALWAYS_200",
+                   "canonical_lookup":{"ok":False},"tests":[]})
+    try:
+        pid=_one_canonical_id()
+        result["canonical_lookup"]={"ok":True,"parcel_id":pid}
+    except Exception as e:
+        result["status"]="diagnostic_failure"
+        result["canonical_lookup"]={"ok":False,"error_type":type(e).__name__,"error":str(e)[:160]}
+        return result
+
+    common={"where":f"PARCELID = '{pid}'","returnGeometry":"false","resultRecordCount":1,"f":"json"}
+    p=dict(common); p["outFields"]="PARCELID"
+    result["tests"].append(_diagnostic_call("PARCEL_CONTROL",PARCEL_CONTROL,p))
+
+    p=dict(common); p["outFields"]="PARCELID"
+    result["tests"].append(_diagnostic_call("OWNER",OWNER,p))
+
+    p=dict(common); p.update({"outFields":"PARCELID,RECORDDATE,DOCNUM,DOCCODE,DOCDATE,ENTRYDATE,TRANSHISSEQ",
+                              "resultRecordCount":5,"orderByFields":"TRANSHISSEQ DESC"})
+    result["tests"].append(_diagnostic_call("TRANSFER_HISTORY",TRANSFER_HISTORY,p))
+
+    result["all_upstream_tests_ok"]=all(x.get("ok") for x in result["tests"])
+    result["status"]="ok" if result["all_upstream_tests_ok"] else "diagnostic_complete_with_failure"
+    return result
