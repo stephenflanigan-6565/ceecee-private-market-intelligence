@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from db import connect, execute, backend
 
-VERSION="V15K3"
-MODE="READ_ONLY_NYS_ORPTS_ASSESSMENT_VALUE_SOURCE_PROBE_CANONICAL_KEY_REPAIR"
+VERSION="V15K4"
+MODE="READ_ONLY_NYS_ORPTS_ASSESSMENT_VALUE_SOURCE_PROBE_BLOCK_SCALE_REPAIR"
 DISTRICT="0905"
 SWIS="473607"
 EXPECTED_CANONICAL=2545
@@ -46,7 +46,7 @@ def canonical_component(value, scale):
 
     Canonical examples observed in V15K2:
       section 00100 -> 1
-      block   01000 -> 1
+      block   00100 -> 1
       lot     01001 -> 1.001
     """
     s=str(value or "").strip()
@@ -58,7 +58,7 @@ def canonical_component(value, scale):
 
 def canonical_key(section,block,lot):
     return (canonical_component(section,100),
-            canonical_component(block,1000),
+            canonical_component(block,100),
             canonical_component(lot,1000))
 
 def key_from_sbl(value):
@@ -75,7 +75,7 @@ def _fetch_page(offset, page_size=2000):
       "f":"json"
     }
     url=SERVICE+"?"+urllib.parse.urlencode(params)
-    req=urllib.request.Request(url,headers={"User-Agent":"Private-Market-Intelligence/V15K2"})
+    req=urllib.request.Request(url,headers={"User-Agent":"Private-Market-Intelligence/V15K4"})
     with urllib.request.urlopen(req,timeout=30) as r:
         payload=json.loads(r.read().decode("utf-8"))
     if "error" in payload: raise RuntimeError(f"NYS ArcGIS error: {payload['error']}")
@@ -139,7 +139,7 @@ def probe_assessment_v15k():
       },
       "sample_unmatched_state":["-".join(x for x in k if x is not None) for k in unmatched_state[:10]],
       "sample_unmatched_canonical":[{"normalized_taxmap":"-".join(x for x in k if x is not None),"parcel_ids":canonical[k][:3]} for k in unmatched_canonical[:10]],
-      "important_scope_note":"V15K3 repairs only the canonical Suffolk fixed-width S/B/L normalization discovered by V15K2. NYS public service currently exposes 2025 ORPTS assessment-roll attributes; 2026 Southampton roll remains a later annual-snapshot enrichment, not a blocker.",
+      "important_scope_note":"V15K4 corrects the canonical block scale from 1000 to 100, based on the live V15K3 mismatch evidence. NYS public service currently exposes 2025 ORPTS assessment-roll attributes; 2026 Southampton roll remains a later annual-snapshot enrichment, not a blocker.",
       "database_writes":0,"assessment_data_touched":False,"seller_scoring_touched":False,
       "opportunity_data_touched":False,"outreach_touched":False
     }
