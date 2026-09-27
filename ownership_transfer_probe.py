@@ -407,12 +407,20 @@ def ingest_evidence_v15j():
             pid=str(a.get("PARCELID")); seq=a.get("TRANSHISSEQ"); doc=a.get("DOCNUM")
             vals=(a.get("LIBERPAGE"),_iso_arcgis_date(a.get("RECORDDATE")),a.get("DOCCODE"),
                   _iso_arcgis_date(a.get("DOCDATE")),_iso_arcgis_date(a.get("ENTRYDATE")))
-            old=execute(c,"""SELECT id,liber_page,record_date,document_code,document_date,entry_date
-                              FROM transfers WHERE parcel_id=? AND source=?
-                              AND ((history_sequence=? ) OR (history_sequence IS NULL AND ? IS NULL))
-                              AND ((document_number=? ) OR (document_number IS NULL AND ? IS NULL))
-                              ORDER BY id LIMIT 1""",
-                        (pid,source_hist,seq,seq,doc,doc)).fetchone()
+            if backend()=="postgres":
+                old=execute(c,"""SELECT id,liber_page,record_date,document_code,document_date,entry_date
+                                  FROM transfers WHERE parcel_id=? AND source=?
+                                  AND history_sequence IS NOT DISTINCT FROM CAST(? AS DOUBLE PRECISION)
+                                  AND document_number IS NOT DISTINCT FROM CAST(? AS TEXT)
+                                  ORDER BY id LIMIT 1""",
+                            (pid,source_hist,seq,doc)).fetchone()
+            else:
+                old=execute(c,"""SELECT id,liber_page,record_date,document_code,document_date,entry_date
+                                  FROM transfers WHERE parcel_id=? AND source=?
+                                  AND ((history_sequence=? ) OR (history_sequence IS NULL AND ? IS NULL))
+                                  AND ((document_number=? ) OR (document_number IS NULL AND ? IS NULL))
+                                  ORDER BY id LIMIT 1""",
+                            (pid,source_hist,seq,seq,doc,doc)).fetchone()
             if old is None:
                 execute(c,"""INSERT INTO transfers(parcel_id,history_sequence,liber_page,record_date,document_number,
                           document_code,document_date,entry_date,sale_date,sale_price,source,observed_at)
