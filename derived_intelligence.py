@@ -723,3 +723,145 @@ def transfer_intelligence_foundation_v15s():
       "database_writes":0,"seller_scoring_touched":False,"signals_created":0,"events_created":0,
       "opportunity_data_touched":False,"outreach_touched":False
     }
+
+# V15T — universal seller-opportunity research framework.
+# Every residential-side property remains eligible. This layer separates factual research
+# pathways from context lenses and does NOT create WATCH/INVESTIGATE states or seller scores.
+def seller_opportunity_research_framework_v15t():
+    """READ ONLY universal eligibility + factual research-pathway preview.
+
+    Purpose: prove that the seller-opportunity architecture starts with the entire residential
+    universe and that no price, luxury, acreage, improvement-size, or named-corridor gate can
+    remove a property from research eligibility. Existing facts are organized into independent
+    research pathways; they are not interpreted as seller intent.
+    """
+    c=connect()
+    try:
+        canonical=execute(c,"SELECT COUNT(*) FROM properties WHERE district=? AND status='A'",(DISTRICT,)).fetchone()[0]
+        if canonical != EXPECTED_CANONICAL:
+            raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {canonical}")
+        rows=execute(c,"""
+          SELECT p.parcel_id,p.full_address,p.land_use,p.acreage,
+                 pc.cohort,a.year_built,a.living_sqft,a.acreage
+          FROM properties p
+          JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
+          LEFT JOIN assessment_evidence a
+            ON a.parcel_id=p.parcel_id AND a.source=? AND a.roll_year=?
+          WHERE p.district=? AND p.status='A'
+            AND pc.method_version='V15D_ORPTS_BROAD_COHORT_V1'
+            AND pc.cohort IN ('RESIDENTIAL_IMPROVED','RESIDENTIAL_VACANT_LAND')
+          ORDER BY p.parcel_id
+        """,(ASSESSMENT_SOURCE,ROLL_YEAR,DISTRICT)).fetchall()
+        if len(rows) != EXPECTED_RESIDENTIAL_SIDE:
+            raise RuntimeError(f"residential-side guard failed: expected {EXPECTED_RESIDENTIAL_SIDE}, found {len(rows)}")
+        transfer_rows=execute(c,"""
+          SELECT parcel_id,record_date,document_date,sale_date
+          FROM transfers WHERE source='Suffolk TaxParcelTransferHistory'
+        """).fetchall()
+        owner_rows=execute(c,"""
+          SELECT parcel_id,COUNT(*) FROM ownership_evidence
+          WHERE source='Suffolk TaxParcelOwner' GROUP BY parcel_id
+        """).fetchall()
+    finally:
+        c.close()
+
+    ids={str(r[0]) for r in rows}; today=date.today()
+    g=_guarded_transfer_intelligence(transfer_rows,ids,today)
+    owner_count={str(r[0]):int(r[1]) for r in owner_rows}
+
+    pathway_counts=Counter(); context_counts=Counter(); coverage=Counter()
+    pathway_examples={
+        "GUARDED_TRANSFER_GAP_20Y_PLUS":[],
+        "VALID_TRANSFER_HISTORY_3_PLUS":[],
+        "COMBINED_TRANSFER_HISTORY_RESEARCH":[],
+        "NO_VALID_TRANSFER_DATE_RESEARCH_GAP":[],
+    }
+    any_path=set(); no_current_path=[]
+
+    for r in rows:
+        pid=str(r[0]); address=str(r[1]).strip() if r[1] not in (None,'') else None
+        lu=str(r[2]).strip() if r[2] not in (None,'') else None
+        factual=str(r[4]); yb=_int(r[5]); sqft=_num(r[6])
+        ac=_num(r[7]) if _num(r[7]) is not None else _num(r[3])
+        valid_latest=g['valid_latest'].get(pid); valid_tc=int(g['valid_count'].get(pid,0)); raw_tc=int(g['raw_count'].get(pid,0))
+        yrs=((today-valid_latest).days/365.2425) if valid_latest else None
+        oc=owner_count.get(pid,0); age=(today.year-yb) if yb and 1600<=yb<=today.year else None
+
+        if address: coverage['address_present']+=1
+        if oc>0: coverage['ownership_evidence_present']+=1
+        if valid_latest: coverage['guarded_latest_transfer_present']+=1
+        if yb and 1600<=yb<=today.year: coverage['year_built_present']+=1
+        if ac is not None: coverage['acreage_present']+=1
+        if sqft is not None and sqft>0: coverage['living_sqft_present']+=1
+
+        long_gap=yrs is not None and yrs>=20
+        deep_history=valid_tc>=3
+        no_valid=(valid_latest is None)
+        combined=long_gap and deep_history
+
+        active=[]
+        if long_gap: active.append('GUARDED_TRANSFER_GAP_20Y_PLUS')
+        if deep_history: active.append('VALID_TRANSFER_HISTORY_3_PLUS')
+        if combined: active.append('COMBINED_TRANSFER_HISTORY_RESEARCH')
+        if no_valid: active.append('NO_VALID_TRANSFER_DATE_RESEARCH_GAP')
+        for p in active:
+            pathway_counts[p]+=1; any_path.add(pid)
+            if len(pathway_examples[p])<25:
+                pathway_examples[p].append({
+                    'parcel_id':pid,'address':address,'factual_cohort':factual,
+                    'guarded_latest_transfer_date':valid_latest.isoformat() if valid_latest else None,
+                    'guarded_latest_transfer_age_years':round(yrs,1) if yrs is not None else None,
+                    'valid_transfer_history_records':valid_tc,'raw_transfer_history_records':raw_tc,
+                    'ownership_evidence_records':oc,
+                })
+        if not active and len(no_current_path)<25:
+            no_current_path.append({'parcel_id':pid,'address':address,'factual_cohort':factual})
+
+        # Context is deliberately separate from seller-opportunity research pathways.
+        if factual=='RESIDENTIAL_VACANT_LAND': context_counts['RESIDENTIAL_VACANT_LAND']+=1
+        if lu=='260': context_counts['SEASONAL_RESIDENTIAL_LANDUSE_260']+=1
+        if age is not None and age>=25: context_counts['PROPERTY_AGE_25Y_PLUS']+=1
+        if ac is not None and ac>=1: context_counts['ACREAGE_1_PLUS']+=1
+        if sqft is not None and sqft>=2500: context_counts['LIVING_SQFT_2500_PLUS']+=1
+
+    no_path_count=len(rows)-len(any_path)
+    return {
+      'status':'ok','version':'V15T','mode':'READ_ONLY_UNIVERSAL_SELLER_OPPORTUNITY_RESEARCH_FRAMEWORK',
+      'database_backend':backend(),'generated_at':utc(),
+      'scope':{'district':DISTRICT,'canonical_active_parcels':canonical,'residential_side_parcels':len(rows),
+               'all_residential_parcels_evaluated':True,'universal_research_eligible_parcels':len(rows)},
+      'eligibility_contract':{
+        'price_floor':False,'luxury_floor':False,'property_size_floor':False,'geographic_prestige_requirement':False,
+        'dune_road_requirement':False,'acreage_requirement':False,'improvement_size_requirement':False,
+        'every_residential_property_remains_eligible':True,
+      },
+      'current_factual_research_pathway_counts':dict(pathway_counts),
+      'properties_with_one_or_more_current_research_pathways':len(any_path),
+      'properties_with_no_current_research_pathway_from_available_facts':no_path_count,
+      'context_lens_counts_not_used_as_eligibility_gates':dict(context_counts),
+      'coverage':dict(coverage),
+      'bounded_pathway_examples':pathway_examples,
+      'bounded_no_current_path_examples':no_current_path,
+      'pathway_definitions':{
+        'GUARDED_TRANSFER_GAP_20Y_PLUS':'Guarded latest valid transfer is at least 20 years old. Research fact only; not owner tenure or seller intent.',
+        'VALID_TRANSFER_HISTORY_3_PLUS':'At least three valid transfer-history records after V15S date-quality filtering. Research fact only.',
+        'COMBINED_TRANSFER_HISTORY_RESEARCH':'Both guarded 20y+ transfer gap and 3+ valid transfer-history records. Intersection for research, not scoring.',
+        'NO_VALID_TRANSFER_DATE_RESEARCH_GAP':'No valid transfer date remains after the V15S guard. This is a data/research gap, not a seller signal.'
+      },
+      'next_evidence_rails_not_yet_available_in_this_layer':[
+        'listing / withdrawal / repeated market-exposure history',
+        'parcel / permit / property-change events',
+        'agent legacy relationship and Mojo history',
+        'genuine buyer-demand match',
+        'first-party owner engagement / response'
+      ],
+      'interpretation_limits':[
+        'V15T proves universal seller-opportunity research eligibility; it does not create WATCH or INVESTIGATE states.',
+        'A research pathway is a reason to inspect facts, not evidence that an owner wants or needs to sell.',
+        'Property age, acreage, living area, land use, price, and named corridors are context lenses only and cannot exclude a property.',
+        'Transfer age is derived only from the V15S guarded latest valid transfer date and is not asserted to equal owner tenure.',
+        'The current pathway set is intentionally incomplete until additional evidence rails are connected.'
+      ],
+      'database_writes':0,'seller_scoring_touched':False,'signals_created':0,'events_created':0,
+      'watch_state_touched':False,'investigate_state_touched':False,'opportunity_data_touched':False,'outreach_touched':False
+    }
