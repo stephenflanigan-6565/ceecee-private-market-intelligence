@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Westhampton Beach canonical parcel-universe collector.
 
-V15B promotes the V15A-verified Suffolk County parcel feed into canonical
-property memory. It is deliberately narrow: parcels + source snapshots only.
+V15B1 repairs canonical comparison in the V15B parcel feed. It normalizes
+source values to the PostgreSQL schema before comparing or writing them.
+It is deliberately narrow: parcels + source snapshots only.
 No scoring, opportunities, relationship data, paid data, or outreach.
 """
 import hashlib, json, urllib.parse, urllib.request
@@ -21,7 +22,7 @@ def utc(): return datetime.now(timezone.utc).isoformat()
 
 def _fetch(params):
     url = PARCEL_URL + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent":"Private-Market-Intelligence/15B"})
+    req = urllib.request.Request(url, headers={"User-Agent":"Private-Market-Intelligence/15B1"})
     with urllib.request.urlopen(req, timeout=90) as response: payload=json.load(response)
     if "error" in payload: raise RuntimeError(payload["error"])
     return payload
@@ -68,6 +69,35 @@ def _hash_payload(payload):
     raw=json.dumps(payload,sort_keys=True,separators=(",",":"),default=str)
     return raw, hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
+def _text(v):
+    """Normalize a source value to the TEXT representation stored by the schema."""
+    if v is None:
+        return None
+    s=str(v).strip()
+    return s or None
+
+def _number(v):
+    """Normalize a source value to the DOUBLE PRECISION representation."""
+    if v is None or v == "":
+        return None
+    return float(v)
+
+def _storage_vals(r):
+    """Return values in exact properties-table storage types/order.
+
+    ArcGIS can emit numeric-looking section/block/lot/date values as numbers.
+    PostgreSQL returns those columns as TEXT after storage. Comparing raw source
+    JSON to database rows therefore creates false updates. Normalize first.
+    """
+    return (
+        _text(r.get("DISTRICT")), _text(r.get("SECTION")), _text(r.get("BLOCK")),
+        _text(r.get("LOT")), _text(r.get("MUNICIPALITY")), _text(r.get("ZIPCODE")),
+        _text(r.get("FULLADDRESS")), _number(r.get("ACREAGE")), _text(r.get("FRONTAGE")),
+        _text(r.get("DEPTH")), _text(r.get("LANDUSE")), _text(r.get("TITLEFLAG")),
+        _text(r.get("STATUS")), _number(r.get("ACREDEED")), _text(r.get("CREATEDATE")),
+        _text(r.get("LASTUPDATE"))
+    )
+
 def populate():
     """Idempotently write the verified universe into canonical property memory."""
     rows=list(_pages()); _validate(rows)
@@ -80,10 +110,7 @@ def populate():
             pid=str(r.get("PARCELID")).strip()
             cur=execute(c,"SELECT district,section,block,lot,municipality,zipcode,full_address,acreage,frontage,depth,land_use,title_flag,status,deed_acreage,source_created_at,source_last_update FROM properties WHERE parcel_id=?",(pid,))
             old=cur.fetchone()
-            vals=(str(r.get("DISTRICT") or "").strip() or None,r.get("SECTION"),r.get("BLOCK"),r.get("LOT"),
-                  r.get("MUNICIPALITY"),r.get("ZIPCODE"),r.get("FULLADDRESS"),r.get("ACREAGE"),r.get("FRONTAGE"),
-                  r.get("DEPTH"),r.get("LANDUSE"),r.get("TITLEFLAG"),r.get("STATUS"),r.get("ACREDEED"),
-                  r.get("CREATEDATE"),r.get("LASTUPDATE"))
+            vals=_storage_vals(r)
             if old is None:
                 execute(c,"""INSERT INTO properties(parcel_id,district,section,block,lot,municipality,zipcode,full_address,acreage,frontage,depth,land_use,title_flag,status,deed_acreage,source_created_at,source_last_update,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(pid,*vals,now,now))
                 inserted += 1
