@@ -1,112 +1,122 @@
 #!/usr/bin/env python3
-"""Westhampton Beach canonical parcel-universe probe.
+"""Westhampton Beach canonical parcel-universe collector.
 
-V15A is intentionally READ ONLY. It validates the official Suffolk County
-TaxParcelPolygon feed and the proposed Westhampton Beach district filter before
-any parcel is written to PostgreSQL.
+V15B promotes the V15A-verified Suffolk County parcel feed into canonical
+property memory. It is deliberately narrow: parcels + source snapshots only.
+No scoring, opportunities, relationship data, paid data, or outreach.
 """
-import json
-import urllib.parse
-import urllib.request
+import hashlib, json, urllib.parse, urllib.request
 from datetime import datetime, timezone
+from db import connect, execute, backend, insert_id
 
 PARCEL_URL = "https://gis.suffolkcountyny.gov/server/rest/services/LocalGovernmentSQLData/TaxParcelPolygon/FeatureServer/0/query"
+SOURCE_NAME = "Suffolk County TaxParcelPolygon"
 WESTHAMPTON_DISTRICT = "0905"
 WHERE = "DISTRICT = '0905' AND STATUS = 'A'"
 FIELDS = "OBJECTID,PARCELID,DISTRICT,SECTION,BLOCK,LOT,MUNICIPALITY,ZIPCODE,FULLADDRESS,ACREAGE,FRONTAGE,DEPTH,LANDUSE,TITLEFLAG,STATUS,ACREDEED,CREATEDATE,LASTUPDATE"
 PAGE_SIZE = 2000
 
 
-def utc():
-    return datetime.now(timezone.utc).isoformat()
-
+def utc(): return datetime.now(timezone.utc).isoformat()
 
 def _fetch(params):
     url = PARCEL_URL + "?" + urllib.parse.urlencode(params)
-    req = urllib.request.Request(url, headers={"User-Agent": "Private-Market-Intelligence/15A"})
-    with urllib.request.urlopen(req, timeout=90) as response:
-        payload = json.load(response)
-    if "error" in payload:
-        raise RuntimeError(payload["error"])
+    req = urllib.request.Request(url, headers={"User-Agent":"Private-Market-Intelligence/15B"})
+    with urllib.request.urlopen(req, timeout=90) as response: payload=json.load(response)
+    if "error" in payload: raise RuntimeError(payload["error"])
     return payload
 
-
 def _pages():
-    offset = 0
+    offset=0
     while True:
-        payload = _fetch({
-            "where": WHERE,
-            "outFields": FIELDS,
-            "returnGeometry": "false",
-            "resultOffset": offset,
-            "resultRecordCount": PAGE_SIZE,
-            "orderByFields": "OBJECTID",
-            "f": "json",
-        })
-        features = payload.get("features", [])
-        for feature in features:
-            yield feature.get("attributes", {})
-        if len(features) < PAGE_SIZE:
-            break
+        payload=_fetch({"where":WHERE,"outFields":FIELDS,"returnGeometry":"false",
+                        "resultOffset":offset,"resultRecordCount":PAGE_SIZE,
+                        "orderByFields":"OBJECTID","f":"json"})
+        features=payload.get("features",[])
+        for feature in features: yield feature.get("attributes",{})
+        if len(features)<PAGE_SIZE: break
         offset += len(features)
 
+def _validate(rows):
+    ids=[]
+    for r in rows:
+        pid=str(r.get("PARCELID") or "").strip()
+        if not pid: raise ValueError("missing PARCELID")
+        if str(r.get("DISTRICT") or "").strip()!=WESTHAMPTON_DISTRICT: raise ValueError("wrong district")
+        if str(r.get("STATUS") or "").strip()!="A": raise ValueError("wrong status")
+        ids.append(pid)
+    if not rows: raise ValueError("empty source universe")
+    if len(ids)!=len(set(ids)): raise ValueError("duplicate PARCELID")
+    return len(ids)
 
 def probe():
-    """Fetch and validate the candidate universe without touching the database."""
-    fetched = 0
-    missing_parcel_id = 0
-    wrong_district = 0
-    wrong_status = 0
-    duplicate_parcel_ids = 0
-    parcel_ids = set()
-    samples = []
+    rows=list(_pages()); unique=_validate(rows)
+    return {"status":"ok","mode":"READ_ONLY_PROBE","source":SOURCE_NAME,
+            "source_url":PARCEL_URL.rsplit("/query",1)[0],"where":WHERE,"generated_at":utc(),
+            "records_fetched":len(rows),"unique_parcel_ids":unique,"database_writes":0,
+            "property_data_touched":False,"outreach_touched":False,
+            "samples":[{"parcel_id":r.get("PARCELID"),"district":r.get("DISTRICT"),
+                        "municipality":r.get("MUNICIPALITY"),"address":r.get("FULLADDRESS"),
+                        "status":r.get("STATUS")} for r in rows[:5]]}
 
-    for row in _pages():
-        fetched += 1
-        parcel_id = row.get("PARCELID")
-        if not parcel_id:
-            missing_parcel_id += 1
-            continue
-        if str(row.get("DISTRICT") or "").strip() != WESTHAMPTON_DISTRICT:
-            wrong_district += 1
-        if str(row.get("STATUS") or "").strip() != "A":
-            wrong_status += 1
-        if parcel_id in parcel_ids:
-            duplicate_parcel_ids += 1
-        else:
-            parcel_ids.add(parcel_id)
-        if len(samples) < 5:
-            samples.append({
-                "parcel_id": parcel_id,
-                "district": row.get("DISTRICT"),
-                "municipality": row.get("MUNICIPALITY"),
-                "address": row.get("FULLADDRESS"),
-                "status": row.get("STATUS"),
-            })
+def _canonical_payload(r):
+    keys=["PARCELID","DISTRICT","SECTION","BLOCK","LOT","MUNICIPALITY","ZIPCODE","FULLADDRESS",
+          "ACREAGE","FRONTAGE","DEPTH","LANDUSE","TITLEFLAG","STATUS","ACREDEED","CREATEDATE","LASTUPDATE"]
+    return {k:r.get(k) for k in keys}
 
-    valid = (
-        fetched > 0
-        and missing_parcel_id == 0
-        and wrong_district == 0
-        and wrong_status == 0
-        and duplicate_parcel_ids == 0
-        and len(parcel_ids) == fetched
-    )
-    return {
-        "status": "ok" if valid else "validation_failed",
-        "mode": "READ_ONLY_PROBE",
-        "source": "Suffolk County TaxParcelPolygon",
-        "source_url": PARCEL_URL.rsplit("/query", 1)[0],
-        "where": WHERE,
-        "generated_at": utc(),
-        "records_fetched": fetched,
-        "unique_parcel_ids": len(parcel_ids),
-        "missing_parcel_id": missing_parcel_id,
-        "wrong_district": wrong_district,
-        "wrong_status": wrong_status,
-        "duplicate_parcel_ids": duplicate_parcel_ids,
-        "database_writes": 0,
-        "property_data_touched": False,
-        "outreach_touched": False,
-        "samples": samples,
-    }
+def _hash_payload(payload):
+    raw=json.dumps(payload,sort_keys=True,separators=(",",":"),default=str)
+    return raw, hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+def populate():
+    """Idempotently write the verified universe into canonical property memory."""
+    rows=list(_pages()); _validate(rows)
+    now=utc(); c=connect(); run_id=None
+    inserted=updated=unchanged=snapshots_added=0
+    try:
+        run_id=insert_id(c,"INSERT INTO source_runs(source,started_at,status) VALUES(?,?,?)",
+                         (SOURCE_NAME,now,"RUNNING"))
+        for r in rows:
+            pid=str(r.get("PARCELID")).strip()
+            cur=execute(c,"SELECT district,section,block,lot,municipality,zipcode,full_address,acreage,frontage,depth,land_use,title_flag,status,deed_acreage,source_created_at,source_last_update FROM properties WHERE parcel_id=?",(pid,))
+            old=cur.fetchone()
+            vals=(str(r.get("DISTRICT") or "").strip() or None,r.get("SECTION"),r.get("BLOCK"),r.get("LOT"),
+                  r.get("MUNICIPALITY"),r.get("ZIPCODE"),r.get("FULLADDRESS"),r.get("ACREAGE"),r.get("FRONTAGE"),
+                  r.get("DEPTH"),r.get("LANDUSE"),r.get("TITLEFLAG"),r.get("STATUS"),r.get("ACREDEED"),
+                  r.get("CREATEDATE"),r.get("LASTUPDATE"))
+            if old is None:
+                execute(c,"""INSERT INTO properties(parcel_id,district,section,block,lot,municipality,zipcode,full_address,acreage,frontage,depth,land_use,title_flag,status,deed_acreage,source_created_at,source_last_update,first_seen_at,last_seen_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",(pid,*vals,now,now))
+                inserted += 1
+            else:
+                oldvals=tuple(old)
+                if oldvals != vals:
+                    execute(c,"""UPDATE properties SET district=?,section=?,block=?,lot=?,municipality=?,zipcode=?,full_address=?,acreage=?,frontage=?,depth=?,land_use=?,title_flag=?,status=?,deed_acreage=?,source_created_at=?,source_last_update=?,last_seen_at=? WHERE parcel_id=?""",(*vals,now,pid))
+                    updated += 1
+                else:
+                    execute(c,"UPDATE properties SET last_seen_at=? WHERE parcel_id=?",(now,pid)); unchanged += 1
+            payload,payload_hash=_hash_payload(_canonical_payload(r))
+            before=getattr(c,"total_changes",None)
+            if backend()=="postgres":
+                cur=execute(c,"INSERT INTO snapshots(parcel_id,source,observed_at,payload_json,payload_hash) VALUES(?,?,?,?,?) ON CONFLICT(parcel_id,source,payload_hash) DO NOTHING",(pid,SOURCE_NAME,now,payload,payload_hash))
+                if cur.rowcount==1: snapshots_added += 1
+            else:
+                cur=execute(c,"INSERT OR IGNORE INTO snapshots(parcel_id,source,observed_at,payload_json,payload_hash) VALUES(?,?,?,?,?)",(pid,SOURCE_NAME,now,payload,payload_hash))
+                if getattr(cur,"rowcount",0)==1: snapshots_added += 1
+        execute(c,"UPDATE source_runs SET completed_at=?,records_seen=?,changed_records=?,status=? WHERE id=?",
+                (utc(),len(rows),inserted+updated,"SUCCESS",run_id))
+        c.commit()
+        total=execute(c,"SELECT COUNT(*) FROM properties WHERE district=? AND status='A'",(WESTHAMPTON_DISTRICT,)).fetchone()[0]
+        return {"status":"ok","mode":"CANONICAL_UNIVERSE_POPULATION","database_backend":backend(),
+                "source":SOURCE_NAME,"where":WHERE,"records_fetched":len(rows),"inserted":inserted,
+                "updated":updated,"unchanged":unchanged,"snapshots_added":snapshots_added,
+                "canonical_active_parcels":total,"source_run_id":run_id,
+                "property_data_touched":True,"opportunity_data_touched":False,"outreach_touched":False,
+                "generated_at":utc()}
+    except Exception as e:
+        c.rollback()
+        try:
+            if run_id is not None:
+                execute(c,"UPDATE source_runs SET completed_at=?,status=?,error=? WHERE id=?",(utc(),"FAILED",type(e).__name__,run_id)); c.commit()
+        except Exception: pass
+        raise
+    finally: c.close()

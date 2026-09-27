@@ -2,7 +2,7 @@ import os
 from flask import Flask, jsonify, render_template_string
 from operator_report import build_snapshot
 from cloud_memory_check import verify_persistence
-from universe_collector import probe as probe_westhampton_universe
+from universe_collector import probe as probe_westhampton_universe, populate as populate_westhampton_universe
 
 app = Flask(__name__)
 
@@ -53,6 +53,16 @@ def westhampton_universe_probe():
     except Exception as e:
         return jsonify({"status":"degraded","mode":"READ_ONLY_PROBE","error":type(e).__name__,
                         "database_writes":0,"property_data_touched":False,"outreach_touched":False}), 503
+
+@app.get("/api/westhampton-universe/populate-v15b")
+def westhampton_universe_populate_v15b():
+    try:
+        result = populate_westhampton_universe()
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","mode":"CANONICAL_UNIVERSE_POPULATION",
+                        "error":type(e).__name__,"opportunity_data_touched":False,
+                        "outreach_touched":False}), 503
 
 @app.get("/api/status")
 def api_status():
