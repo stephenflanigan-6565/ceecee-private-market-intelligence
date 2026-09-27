@@ -5,6 +5,7 @@ from cloud_memory_check import verify_persistence
 from universe_collector import probe as probe_westhampton_universe, populate as populate_westhampton_universe
 from universe_profile import profile as profile_westhampton_universe
 from universe_classification import preview as preview_westhampton_classification, persist as persist_westhampton_classification
+from ownership_transfer_probe import probe as probe_westhampton_ownership_transfer
 
 app = Flask(__name__)
 
@@ -94,6 +95,17 @@ def westhampton_classification_persist_v15e():
         return jsonify({"status":"degraded","mode":"FACTUAL_COHORT_PERSISTENCE",
                         "error":type(e).__name__,"seller_scoring_touched":False,
                         "opportunity_data_touched":False,"outreach_touched":False}), 503
+
+@app.get("/api/westhampton-universe/ownership-transfer-probe-v15f")
+def westhampton_ownership_transfer_probe_v15f():
+    try:
+        return jsonify(probe_westhampton_ownership_transfer()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","mode":"READ_ONLY_OWNERSHIP_TRANSFER_PROBE",
+                        "error":type(e).__name__,"database_writes":0,
+                        "ownership_data_touched":False,"transfer_data_touched":False,
+                        "seller_scoring_touched":False,"opportunity_data_touched":False,
+                        "outreach_touched":False}), 503
 
 @app.get("/api/status")
 def api_status():
