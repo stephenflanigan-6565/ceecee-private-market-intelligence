@@ -1055,3 +1055,67 @@ def property_parcel_change_event_evidence_v15v():
       'database_writes':0,'seller_scoring_touched':False,'signals_created':0,'events_created':0,
       'watch_state_touched':False,'investigate_state_touched':False,'opportunity_data_touched':False,'outreach_touched':False
     }
+
+# V15W — Southampton permit / certificate / building-change source readiness.
+# READ ONLY. Establishes the evidence contract and access boundary before any permit ingestion.
+def permit_building_change_source_readiness_v15w():
+    c=connect()
+    try:
+        canonical=execute(c,"SELECT COUNT(*) FROM properties WHERE district=? AND status='A'",(DISTRICT,)).fetchone()[0]
+        if canonical != EXPECTED_CANONICAL:
+            raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {canonical}")
+        residential=execute(c,"""
+          SELECT COUNT(*) FROM properties p JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
+          WHERE p.district=? AND p.status='A'
+            AND pc.method_version='V15D_ORPTS_BROAD_COHORT_V1'
+            AND pc.cohort IN ('RESIDENTIAL_IMPROVED','RESIDENTIAL_VACANT_LAND')
+        """,(DISTRICT,)).fetchone()[0]
+        if residential != EXPECTED_RESIDENTIAL_SIDE:
+            raise RuntimeError(f"residential-side guard failed: expected {EXPECTED_RESIDENTIAL_SIDE}, found {residential}")
+    finally:
+        c.close()
+
+    return {
+      'status':'ok','version':'V15W','mode':'READ_ONLY_PERMIT_BUILDING_CHANGE_SOURCE_READINESS',
+      'database_backend':backend(),'generated_at':utc(),
+      'scope':{'district':DISTRICT,'canonical_active_parcels':canonical,'residential_side_parcels':residential,
+               'all_residential_parcels_remain_eligible':True},
+      'official_source_readiness':{
+        'southampton_gis_eportal':{
+          'status':'OFFICIAL_SOURCE_CONFIRMED_ACCESS_CONTROLLED',
+          'publisher':'Town of Southampton GIS',
+          'documented_content':['permits','certificates of occupancy','certificates of compliance','property data','sales','mass appraisal','scanned property documents'],
+          'access':'SUBSCRIPTION_OR_AUTHORIZED_SESSION_REQUIRED_FOR_PROPERTY_LEVEL_RESEARCH'
+        },
+        'southampton_public_permit_lookup':{
+          'status':'OFFICIAL_PUBLIC_LOOKUP_CONFIRMED',
+          'publisher':'Town of Southampton',
+          'documented_search_modes':['permit number / address','property search','permit status','licensed contractor'],
+          'automation_status':'NOT_YET_VALIDATED_FOR_BULK_OR_PROGRAMMATIC_INGEST'
+        },
+        'southampton_building_forms':{
+          'status':'OFFICIAL_EVENT_VOCABULARY_SOURCE',
+          'documented_residential_activity_types':['ACCESSORY_STRUCTURE','ADDITION','INTERIOR_RENOVATION_OR_ALTERATION','NEW_DWELLING','PARTIAL_DEMOLITION','POOL_SPA_HOT_TUB','WHOLE_HOUSE_DEMOLITION','CERTIFICATE_OF_OCCUPANCY','CERTIFICATE_OF_COMPLIANCE'],
+          'role':'NORMALIZATION_REFERENCE_NOT_PROPERTY_EVENT_FEED'
+        }
+      },
+      'future_evidence_contract':{
+        'required_identity':['parcel_id','source','source_record_id'],
+        'required_event_facts':['event_date','source_native_event_type_or_description'],
+        'desired_facts':['permit_number','permit_status','application_date','issue_date','completion_or_certificate_date','certificate_number','source_native_description'],
+        'property_match_must_be_auditable':True,'provenance_required':True,'raw_source_preserved':True,'idempotent_ingest_required':True
+      },
+      'normalization_policy':[
+        'Preserve source-native permit/certificate text; normalized event types are additive.',
+        'A permit application, issued permit, inspection, completion, CO, and compliance certificate are distinct facts when the source distinguishes them.',
+        'Do not infer completed construction merely from a permit application or issuance.',
+        'Do not infer seller intent from permit or building activity.',
+        'Do not use static assessment characteristics as substitutes for dated permit/building events.',
+        'Do not automate an access-controlled source until authorized access and permitted retrieval method are established.'
+      ],
+      'rail_status':'SOURCE_CONFIRMED_INGEST_NOT_YET_AUTHORIZED_OR_VALIDATED',
+      'next_action':'VALIDATE_PROPERTY_LEVEL_RETRIEVAL_AND_PARCEL_MATCH_WITH_AUTHORIZED_SOUTHAMPTON_ACCESS',
+      'credential_or_purchase_required_before_next_ingest_step':True,
+      'database_writes':0,'seller_scoring_touched':False,'signals_created':0,'events_created':0,
+      'watch_state_touched':False,'investigate_state_touched':False,'opportunity_data_touched':False,'outreach_touched':False
+    }

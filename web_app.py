@@ -7,7 +7,7 @@ from universe_profile import profile as profile_westhampton_universe
 from universe_classification import preview as preview_westhampton_classification, persist as persist_westhampton_classification
 from ownership_transfer_probe import probe_owner_only, probe_transfer_only, probe_owner_handshake, probe_transfer_history_handshake, probe_internal_failure_isolation, probe_coverage_v15i, ingest_evidence_v15j
 from assessment_probe import probe_assessment_v15k, persist_assessment_v15l
-from derived_intelligence import profile_v15m, candidate_matrix_v15n, location_context_profile_v15p, candidate_research_cohorts_v15q, transfer_date_quality_guard_v15r, transfer_intelligence_foundation_v15s, seller_opportunity_research_framework_v15t, market_exposure_evidence_readiness_v15u, property_parcel_change_event_evidence_v15v
+from derived_intelligence import profile_v15m, candidate_matrix_v15n, location_context_profile_v15p, candidate_research_cohorts_v15q, transfer_date_quality_guard_v15r, transfer_intelligence_foundation_v15s, seller_opportunity_research_framework_v15t, market_exposure_evidence_readiness_v15u, property_parcel_change_event_evidence_v15v, permit_building_change_source_readiness_v15w
 
 app = Flask(__name__)
 
@@ -154,6 +154,16 @@ def westhampton_guarded_transfer_intelligence_v15s():
     except Exception as exc:
         return jsonify({"status":"degraded","version":"V15S","mode":"READ_ONLY_GUARDED_TRANSFER_INTELLIGENCE_FOUNDATION",
                         "error":str(exc),"database_writes":0,"seller_scoring_touched":False,
+                        "opportunity_data_touched":False,"outreach_touched":False}), 200
+
+@app.get("/api/westhampton-universe/permit-building-change-source-readiness-v15w")
+def westhampton_permit_building_change_source_readiness_v15w():
+    try:
+        return jsonify(permit_building_change_source_readiness_v15w()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","version":"V15W","mode":"READ_ONLY_PERMIT_BUILDING_CHANGE_SOURCE_READINESS",
+                        "error_type":type(e).__name__,"error":str(e)[:240],"database_writes":0,
+                        "seller_scoring_touched":False,"watch_state_touched":False,"investigate_state_touched":False,
                         "opportunity_data_touched":False,"outreach_touched":False}), 200
 
 @app.get("/api/westhampton-universe/property-parcel-change-events-v15v")
