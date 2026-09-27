@@ -62,7 +62,7 @@ def profile_v15m():
           LEFT JOIN assessment_evidence a
             ON a.parcel_id=p.parcel_id AND a.source=? AND a.roll_year=?
           WHERE p.district=? AND p.status='A'
-            AND (p.land_use LIKE '2%' OR p.land_use LIKE '31%')
+            AND (p.land_use LIKE '2%%' OR p.land_use LIKE '31%%')
           ORDER BY p.parcel_id
         """,(ASSESSMENT_SOURCE,ROLL_YEAR,DISTRICT)).fetchall()
         if len(rows) != EXPECTED_RESIDENTIAL_SIDE:
