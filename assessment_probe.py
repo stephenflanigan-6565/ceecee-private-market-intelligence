@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from db import connect, execute, backend
 
-VERSION="V15K6"
-MODE="READ_ONLY_NYS_ORPTS_ASSESSMENT_RESIDUAL_DIAGNOSTIC"
+VERSION="V15K7"
+MODE="READ_ONLY_NYS_ORPTS_ASSESSMENT_RAW_SBL_REPAIR"
 DISTRICT="0905"
 SWIS="473607"
 EXPECTED_CANONICAL=2545
@@ -82,10 +82,29 @@ def canonical_key(section,block,lot):
 
 def key_from_sbl(value):
     s=str(value or "").strip()
-    # ORPTS/Suffolk form commonly: 012.000-0001-013.000
+    # Human-readable ORPTS/Suffolk form, e.g. 12.001-1-2.002.
     m=re.search(r"(\d{1,3}(?:\.\d+)?)\s*-\s*(\d{1,4}(?:\.\d+)?)\s*-\s*(\d{1,3}(?:\.\d+)?)",s)
-    if not m: return None
-    return key(*m.groups())
+    if m:
+        return key(*m.groups())
+
+    # V15K6 proved that the 75 previously-unparsable values are a second,
+    # deterministic 20-digit Suffolk SBL encoding. Layout observed:
+    #   SSSsss BBBB LLLLL EEEEE
+    #   010000 0006 01900 00000 -> 10-6-19
+    #   011000 0001 01000 10000 -> 11-1-10.001
+    #   003001 0001 00500 00000 -> 3.001-1-5
+    # Section = 3-digit whole + 3-digit suffix. Lot base is /100; the
+    # extension encodes thousandths (10000 -> .001, 30000 -> .003).
+    if re.fullmatch(r"\d{20}", s):
+        sec_raw=s[0:6]; block_raw=s[6:10]; lot_raw=s[10:15]; ext_raw=s[15:20]
+        sec_whole=int(sec_raw[:3]); sec_suffix=int(sec_raw[3:])
+        section=str(sec_whole) if sec_suffix==0 else f"{sec_whole}.{sec_suffix:03d}"
+        block=str(int(block_raw))
+        lot_base=Decimal(int(lot_raw))/Decimal(100)
+        lot_ext=Decimal(int(ext_raw))/Decimal(10000000)
+        lot=norm_component(lot_base+lot_ext)
+        return key(section,block,lot)
+    return None
 
 def _fetch_page(offset, page_size=2000):
     params={
@@ -94,7 +113,7 @@ def _fetch_page(offset, page_size=2000):
       "f":"json"
     }
     url=SERVICE+"?"+urllib.parse.urlencode(params)
-    req=urllib.request.Request(url,headers={"User-Agent":"Private-Market-Intelligence/V15K6"})
+    req=urllib.request.Request(url,headers={"User-Agent":"Private-Market-Intelligence/V15K7"})
     with urllib.request.urlopen(req,timeout=30) as r:
         payload=json.loads(r.read().decode("utf-8"))
     if "error" in payload: raise RuntimeError(f"NYS ArcGIS error: {payload['error']}")
@@ -164,7 +183,7 @@ def probe_assessment_v15k():
         "all_unmatched_state_keys":["-".join(x for x in k if x is not None) for k in unmatched_state[:100]],
         "unmatched_canonical_sample_count":min(100,len(unmatched_canonical))
       },
-      "important_scope_note":"V15K6 is residual diagnostics only. It preserves V15K5 normalization and exposes bounded raw unparsable NYS tax-map values plus larger unmatched samples so remaining differences can be classified without guessing. NYS public service currently exposes 2025 ORPTS assessment-roll attributes; 2026 Southampton roll remains later enrichment.",
+      "important_scope_note":"V15K7 adds only the deterministic 20-digit Suffolk raw-SBL parser proven by V15K6 residual evidence. Existing V15K5 human-readable normalization remains unchanged. This is still measurement-only; 2025 ORPTS attributes are not persisted.",
       "database_writes":0,"assessment_data_touched":False,"seller_scoring_touched":False,
       "opportunity_data_touched":False,"outreach_touched":False
     }
