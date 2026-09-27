@@ -4,7 +4,7 @@ from operator_report import build_snapshot
 from cloud_memory_check import verify_persistence
 from universe_collector import probe as probe_westhampton_universe, populate as populate_westhampton_universe
 from universe_profile import profile as profile_westhampton_universe
-from universe_classification import preview as preview_westhampton_classification
+from universe_classification import preview as preview_westhampton_classification, persist as persist_westhampton_classification
 
 app = Flask(__name__)
 
@@ -85,6 +85,15 @@ def westhampton_classification_preview_v15d():
                         "error":type(e).__name__,"database_writes":0,
                         "property_data_touched":False,"opportunity_data_touched":False,
                         "outreach_touched":False}), 503
+
+@app.get("/api/westhampton-universe/classification-persist-v15e")
+def westhampton_classification_persist_v15e():
+    try:
+        return jsonify(persist_westhampton_classification()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","mode":"FACTUAL_COHORT_PERSISTENCE",
+                        "error":type(e).__name__,"seller_scoring_touched":False,
+                        "opportunity_data_touched":False,"outreach_touched":False}), 503
 
 @app.get("/api/status")
 def api_status():
