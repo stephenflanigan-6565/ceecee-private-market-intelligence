@@ -212,3 +212,95 @@ def probe_internal_failure_isolation():
     result["all_upstream_tests_ok"]=all(x.get("ok") for x in result["tests"])
     result["status"]="ok" if result["all_upstream_tests_ok"] else "diagnostic_complete_with_failure"
     return result
+
+# V15I read-only ownership + transfer-history coverage measurement.
+def _fetch_paged_parcel_ids(url, page_size=2000, extra_fields=None):
+    """Fetch only parcel identity (+ optional small fields) in bounded ArcGIS pages."""
+    import time
+    fields=["PARCELID"] + list(extra_fields or [])
+    out=[]; offset=0; pages=0; elapsed_total=0.0
+    while True:
+        started=time.monotonic()
+        data=fetch(url,{
+            "where":f"PARCELID LIKE '{DISTRICT_PREFIX}%'",
+            "outFields":",".join(fields),
+            "returnGeometry":"false",
+            "resultOffset":offset,
+            "resultRecordCount":page_size,
+            "orderByFields":"PARCELID",
+            "f":"json"
+        })
+        elapsed_total += time.monotonic()-started
+        feats=data.get("features",[]); pages += 1
+        out.extend(x.get("attributes",{}) for x in feats)
+        if not feats: break
+        if len(feats) < page_size and not data.get("exceededTransferLimit"): break
+        offset += len(feats)
+        if pages >= 50: raise RuntimeError("V15I_PAGE_SAFETY_LIMIT")
+    return out,pages,round(elapsed_total,3)
+
+def probe_coverage_v15i():
+    """Measure source coverage across locked Westhampton universe. No writes, no names."""
+    c=connect()
+    try:
+        rows=execute(c,"""SELECT p.parcel_id, COALESCE(pc.cohort,'UNCLASSIFIED')
+                          FROM properties p
+                          LEFT JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
+                          WHERE p.district=? AND p.status='A' ORDER BY p.parcel_id""",("0905",)).fetchall()
+        cohort_by_pid={str(r[0]):str(r[1]) for r in rows}
+    finally:
+        c.close()
+    canonical=set(cohort_by_pid)
+    residential={pid for pid,cohort in cohort_by_pid.items() if cohort in ("RESIDENTIAL_IMPROVED","RESIDENTIAL_VACANT_LAND")}
+
+    owners,owner_pages,owner_seconds=_fetch_paged_parcel_ids(OWNER,2000)
+    owner_counts={}
+    for a in owners:
+        pid=a.get("PARCELID")
+        if pid is not None:
+            pid=str(pid); owner_counts[pid]=owner_counts.get(pid,0)+1
+    owner_match=set(owner_counts)&canonical
+
+    hist,hist_pages,hist_seconds=_fetch_paged_parcel_ids(TRANSFER_HISTORY,2000,["TRANSHISSEQ"])
+    hist_counts={}
+    for a in hist:
+        pid=a.get("PARCELID")
+        if pid is not None:
+            pid=str(pid); hist_counts[pid]=hist_counts.get(pid,0)+1
+    hist_match=set(hist_counts)&canonical
+
+    owner_missing=sorted(canonical-owner_match)
+    owner_multi=sorted(pid for pid,n in owner_counts.items() if pid in canonical and n>1)
+    hist_missing=sorted(canonical-hist_match)
+    both=owner_match & hist_match
+    residential_owner=owner_match & residential
+    residential_hist=hist_match & residential
+
+    def pct(n,d): return round((100.0*n/d),2) if d else 0.0
+    result=_base("READ_ONLY_OWNERSHIP_TRANSFER_COVERAGE")
+    result.update({
+        "version":"V15I","status":"ok","canonical_active_parcels":len(canonical),
+        "residential_side_parcels":len(residential),
+        "owner_source":{"records_fetched":len(owners),"pages":owner_pages,"elapsed_seconds":owner_seconds,
+                        "parcels_with_record":len(owner_match),"coverage_pct":pct(len(owner_match),len(canonical)),
+                        "parcels_without_record":len(owner_missing),"parcels_with_multiple_records":len(owner_multi),
+                        "residential_parcels_with_record":len(residential_owner),
+                        "residential_coverage_pct":pct(len(residential_owner),len(residential)),
+                        "missing_sample_parcel_ids":owner_missing[:10],"multiple_record_sample_parcel_ids":owner_multi[:10],
+                        "owner_names_requested":False,"owner_names_exposed_in_response":False},
+        "transfer_history_source":{"records_fetched":len(hist),"pages":hist_pages,"elapsed_seconds":hist_seconds,
+                        "parcels_with_history":len(hist_match),"coverage_pct":pct(len(hist_match),len(canonical)),
+                        "parcels_without_history":len(hist_missing),
+                        "residential_parcels_with_history":len(residential_hist),
+                        "residential_coverage_pct":pct(len(residential_hist),len(residential)),
+                        "history_records_per_covered_parcel":{"min":min((hist_counts[p] for p in hist_match),default=0),
+                            "max":max((hist_counts[p] for p in hist_match),default=0),
+                            "average":round(sum(hist_counts[p] for p in hist_match)/len(hist_match),2) if hist_match else 0},
+                        "missing_sample_parcel_ids":hist_missing[:10],"party_names_requested":False,"party_names_exposed_in_response":False},
+        "combined":{"parcels_with_owner_and_history":len(both),"coverage_pct":pct(len(both),len(canonical)),
+                    "residential_with_owner_and_history":len(both & residential),
+                    "residential_coverage_pct":pct(len(both & residential),len(residential))},
+        "classification_method_expected":"V15D_ORPTS_BROAD_COHORT_V1",
+        "measurement_only":True,"permanent_ingestion_performed":False
+    })
+    return result

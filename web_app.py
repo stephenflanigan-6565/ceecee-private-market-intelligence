@@ -5,7 +5,7 @@ from cloud_memory_check import verify_persistence
 from universe_collector import probe as probe_westhampton_universe, populate as populate_westhampton_universe
 from universe_profile import profile as profile_westhampton_universe
 from universe_classification import preview as preview_westhampton_classification, persist as persist_westhampton_classification
-from ownership_transfer_probe import probe_owner_only, probe_transfer_only, probe_owner_handshake, probe_transfer_history_handshake, probe_internal_failure_isolation
+from ownership_transfer_probe import probe_owner_only, probe_transfer_only, probe_owner_handshake, probe_transfer_history_handshake, probe_internal_failure_isolation, probe_coverage_v15i
 
 app = Flask(__name__)
 
@@ -96,6 +96,17 @@ def westhampton_classification_persist_v15e():
                         "error":type(e).__name__,"seller_scoring_touched":False,
                         "opportunity_data_touched":False,"outreach_touched":False}), 503
 
+
+
+@app.get("/api/westhampton-universe/coverage-v15i")
+def westhampton_coverage_v15i():
+    try:
+        return jsonify(probe_coverage_v15i()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V15I","mode":"READ_ONLY_OWNERSHIP_TRANSFER_COVERAGE",
+                        "error_type":type(e).__name__,"error":str(e)[:200],"database_writes":0,
+                        "property_data_touched":False,"ownership_data_touched":False,"transfer_data_touched":False,
+                        "seller_scoring_touched":False,"opportunity_data_touched":False,"outreach_touched":False}), 200
 
 @app.get("/api/westhampton-universe/internal-failure-isolation-v15h")
 def westhampton_internal_failure_isolation_v15h():
