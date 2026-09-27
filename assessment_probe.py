@@ -6,7 +6,7 @@ Westhampton Beach tax-map identifiers, normalizes section/block/lot, and
 measures the join against the locked canonical Suffolk parcel universe.
 No assessment rows are persisted in V15K.
 """
-import io, re, urllib.request
+import io, re, urllib.request, urllib.error
 from collections import Counter
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -20,6 +20,7 @@ EXPECTED_CANONICAL=2545
 ROLL_YEAR=2026
 SOURCE="Town of Southampton 2026 Assessment Roll — Westhampton Beach"
 PDF_URL="https://www.southamptontownny.gov/DocumentCenter/View/46937/Westhampton-Beach-473607"
+PDF_MIRROR_URL="https://www.southamptontownnypolice.gov/DocumentCenter/View/46937/Westhampton-Beach-473607"
 # Example official roll form: 473607 012.000-0002-035.000
 TAXMAP_RE=re.compile(r"\b473607\s+(\d{1,3}(?:\.\d+)?)\s*-\s*(\d{1,4}(?:\.\d+)?)\s*-\s*(\d{1,3}(?:\.\d+)?)\b")
 
@@ -42,14 +43,27 @@ def norm_component(value):
 def key(section,block,lot):
     return (norm_component(section),norm_component(block),norm_component(lot))
 
-def fetch_pdf():
-    req=urllib.request.Request(PDF_URL,headers={"User-Agent":"Private-Market-Intelligence/V15K"})
-    with urllib.request.urlopen(req,timeout=120) as r:
+def _download_pdf(url, timeout=45):
+    req=urllib.request.Request(url,headers={
+        "User-Agent":"Mozilla/5.0 (compatible; Private-Market-Intelligence/V15K1)",
+        "Accept":"application/pdf,*/*;q=0.8",
+        "Connection":"close",
+    })
+    with urllib.request.urlopen(req,timeout=timeout) as r:
         data=r.read()
         ctype=(r.headers.get("Content-Type") or "").lower()
     if len(data)<10000: raise RuntimeError("assessment roll download unexpectedly small")
     if not data.startswith(b"%PDF"): raise RuntimeError(f"assessment roll response is not PDF ({ctype})")
     return data
+
+def fetch_pdf():
+    errors=[]
+    for url in (PDF_URL, PDF_MIRROR_URL):
+        try:
+            return _download_pdf(url), url
+        except Exception as e:
+            errors.append(f"{url}: {type(e).__name__}: {e}")
+    raise RuntimeError("assessment roll download failed from all official hosts: " + " | ".join(errors))
 
 def extract_taxmaps(pdf_bytes):
     try:
@@ -80,7 +94,7 @@ def probe_assessment_v15k():
         canonical.setdefault(k,[]).append(str(r[0]))
     canonical_collisions={k:v for k,v in canonical.items() if None not in k and len(v)>1}
 
-    pdf=fetch_pdf()
+    pdf,source_url=fetch_pdf()
     page_count,pages_with_taxmaps,matches=extract_taxmaps(pdf)
     raw_keys=[key(sec,blk,lot) for _,sec,blk,lot in matches]
     counts=Counter(raw_keys)
@@ -92,7 +106,7 @@ def probe_assessment_v15k():
 
     return {
       "status":"ok","version":VERSION,"mode":MODE,"database_backend":backend(),
-      "source":SOURCE,"source_url":PDF_URL,"roll_year":ROLL_YEAR,"swis":SWIS,"district":DISTRICT,
+      "source":SOURCE,"source_url":source_url,"official_source_urls":[PDF_URL,PDF_MIRROR_URL],"roll_year":ROLL_YEAR,"swis":SWIS,"district":DISTRICT,
       "generated_at":utc(),"pdf_bytes":len(pdf),"pdf_pages":page_count,"pages_with_taxmaps":pages_with_taxmaps,
       "taxmap_occurrences_extracted":len(raw_keys),"unique_roll_taxmaps":len(roll_keys),
       "duplicate_taxmap_occurrences":sum(n-1 for n in counts.values() if n>1),
