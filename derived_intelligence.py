@@ -501,3 +501,137 @@ def candidate_research_cohorts_v15q():
       "database_writes":0,"seller_scoring_touched":False,"signals_created":0,"events_created":0,
       "opportunity_data_touched":False,"outreach_touched":False
     }
+
+# V15R — transfer-date data-quality guard. Raw evidence is never rewritten.
+# Derived intelligence may consume only dates that pass this conservative plausibility window.
+V15R_MIN_TRANSFER_DATE = date(1800, 1, 1)
+
+
+def _transfer_date_quality(d, today=None):
+    today = today or date.today()
+    if d is None:
+        return "MISSING"
+    if d > today:
+        return "SUSPECT_FUTURE_DATE"
+    if d < V15R_MIN_TRANSFER_DATE:
+        return "SUSPECT_PRE_1800_DATE"
+    return "VALID"
+
+
+def transfer_date_quality_guard_v15r():
+    """READ ONLY diagnostic for transfer-date plausibility across the full residential universe.
+
+    Preserves raw transfer evidence. Produces a valid-only derived latest-transfer date and
+    quantifies which parcels/cohort memberships would change if suspect dates are excluded.
+    """
+    c=connect()
+    try:
+        canonical=execute(c,"SELECT COUNT(*) FROM properties WHERE district=? AND status='A'",(DISTRICT,)).fetchone()[0]
+        if canonical != EXPECTED_CANONICAL:
+            raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {canonical}")
+        residential_rows=execute(c,"""
+          SELECT p.parcel_id,p.full_address,pc.cohort,p.land_use,p.acreage,
+                 a.year_built,a.living_sqft,a.acreage
+          FROM properties p
+          JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
+          LEFT JOIN assessment_evidence a
+            ON a.parcel_id=p.parcel_id AND a.source=? AND a.roll_year=?
+          WHERE p.district=? AND p.status='A'
+            AND pc.method_version='V15D_ORPTS_BROAD_COHORT_V1'
+            AND pc.cohort IN ('RESIDENTIAL_IMPROVED','RESIDENTIAL_VACANT_LAND')
+          ORDER BY p.parcel_id
+        """,(ASSESSMENT_SOURCE,ROLL_YEAR,DISTRICT)).fetchall()
+        if len(residential_rows) != EXPECTED_RESIDENTIAL_SIDE:
+            raise RuntimeError(f"residential-side guard failed: expected {EXPECTED_RESIDENTIAL_SIDE}, found {len(residential_rows)}")
+        transfer_rows=execute(c,"""
+          SELECT parcel_id,record_date,document_date,sale_date
+          FROM transfers WHERE source='Suffolk TaxParcelTransferHistory'
+        """).fetchall()
+    finally:
+        c.close()
+
+    residential_ids={str(r[0]) for r in residential_rows}
+    today=date.today()
+    quality_counts=Counter(); suspect=[]
+    raw_latest={}; valid_latest={}; valid_count=Counter(); raw_count=Counter()
+
+    for r in transfer_rows:
+        pid=str(r[0])
+        if pid not in residential_ids:
+            continue
+        d=_date(r[3]) or _date(r[1]) or _date(r[2])
+        q=_transfer_date_quality(d,today)
+        quality_counts[q]+=1; raw_count[pid]+=1
+        if d and (pid not in raw_latest or d>raw_latest[pid]): raw_latest[pid]=d
+        if q == "VALID":
+            valid_count[pid]+=1
+            if pid not in valid_latest or d>valid_latest[pid]: valid_latest[pid]=d
+        elif q.startswith("SUSPECT"):
+            suspect.append({
+                "parcel_id":pid,
+                "raw_selected_date":d.isoformat() if d else None,
+                "quality_state":q,
+                "record_date":str(r[1]) if r[1] is not None else None,
+                "document_date":str(r[2]) if r[2] is not None else None,
+                "sale_date":str(r[3]) if r[3] is not None else None,
+            })
+
+    # Compare only the latest-date-derived research memberships. This is impact measurement,
+    # not a mutation of V15Q and not a seller decision.
+    changed_latest=[]; raw_members=set(); guarded_members=set()
+    for r in residential_rows:
+        pid=str(r[0]); address=str(r[1]).strip() if r[1] not in (None,'') else None
+        factual=str(r[2]); lu=str(r[3]).strip() if r[3] not in (None,'') else None
+        ac=_num(r[7]) if _num(r[7]) is not None else _num(r[4]); yb=_int(r[5]); sqft=_num(r[6])
+        age=(today.year-yb) if yb and 1600<=yb<=today.year else None
+        au=(address or '').upper(); dune=any(any(tok in au for tok in cfg['address_tokens']) for cfg in V15Q_MARKET_CONFIG['corridors'])
+        seasonal=(lu=='260'); vacant=(factual=='RESIDENTIAL_VACANT_LAND'); improved=(factual=='RESIDENTIAL_IMPROVED')
+        hist3=raw_count.get(pid,0)>=3; age25=age is not None and age>=25; acre1=ac is not None and ac>=1; sqft2500=sqft is not None and sqft>=2500
+
+        def memberships(ld):
+            yrs=((today-ld).days/365.2425) if ld else None
+            t10=yrs is not None and yrs>=10; t20=yrs is not None and yrs>=20
+            out=set()
+            if dune and t10: out.add('DUNE_ROAD_HISTORY_RESEARCH')
+            if seasonal and t20: out.add('SEASONAL_RESIDENTIAL_HISTORY_RESEARCH')
+            if vacant and t20: out.add('VACANT_RESIDENTIAL_LAND_HISTORY_RESEARCH')
+            if acre1 and t20: out.add('LARGER_LOT_HISTORY_RESEARCH')
+            if sqft2500 and t20: out.add('LARGER_IMPROVEMENT_HISTORY_RESEARCH')
+            if improved and t20 and age25 and hist3: out.add('GENERAL_IMPROVED_HISTORY_RESEARCH')
+            return out
+
+        rm=memberships(raw_latest.get(pid)); gm=memberships(valid_latest.get(pid))
+        raw_members.update((pid,x) for x in rm); guarded_members.update((pid,x) for x in gm)
+        if raw_latest.get(pid) != valid_latest.get(pid):
+            changed_latest.append({
+                'parcel_id':pid,'address':address,
+                'raw_latest_transfer_date':raw_latest[pid].isoformat() if pid in raw_latest else None,
+                'guarded_latest_transfer_date':valid_latest[pid].isoformat() if pid in valid_latest else None,
+                'raw_memberships':sorted(rm),'guarded_memberships':sorted(gm),
+            })
+
+    removed=sorted(raw_members-guarded_members); added=sorted(guarded_members-raw_members)
+    return {
+      'status':'ok','version':'V15R','mode':'READ_ONLY_TRANSFER_DATE_DATA_QUALITY_GUARD',
+      'database_backend':backend(),'generated_at':utc(),
+      'scope':{'district':DISTRICT,'canonical_active_parcels':canonical,'residential_side_parcels':len(residential_rows),
+               'all_residential_parcels_evaluated':True},
+      'policy':{'raw_evidence_preserved':True,'minimum_plausible_transfer_date':V15R_MIN_TRANSFER_DATE.isoformat(),
+                'future_dates_suspect':True,'suspect_dates_excluded_from_derived_latest_date':True},
+      'transfer_record_quality_counts':dict(quality_counts),
+      'suspect_transfer_record_count':len(suspect),'suspect_transfer_records':suspect,
+      'parcels_with_changed_latest_date_after_guard':len(changed_latest),
+      'changed_latest_date_details':changed_latest,
+      'v15q_membership_impact':{'raw_membership_pairs':len(raw_members),'guarded_membership_pairs':len(guarded_members),
+                                'memberships_removed_by_guard':len(removed),'memberships_added_by_guard':len(added),
+                                'removed_pairs':[{'parcel_id':p,'research_cohort':c} for p,c in removed],
+                                'added_pairs':[{'parcel_id':p,'research_cohort':c} for p,c in added]},
+      'interpretation_limits':[
+        'V15R does not delete, rewrite, or correct raw Suffolk transfer evidence.',
+        'A SUSPECT date is a data-quality state, not evidence about a seller or property owner.',
+        'The 1800 floor is a conservative derived-intelligence plausibility guard, not a claim that older historical land records cannot exist.',
+        'V15R measures impact only; it does not modify V15Q, create WATCH/INVESTIGATE states, score sellers, or authorize contact.'
+      ],
+      'database_writes':0,'seller_scoring_touched':False,'signals_created':0,'events_created':0,
+      'opportunity_data_touched':False,'outreach_touched':False
+    }
