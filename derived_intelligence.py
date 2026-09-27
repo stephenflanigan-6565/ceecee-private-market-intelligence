@@ -865,3 +865,87 @@ def seller_opportunity_research_framework_v15t():
       'database_writes':0,'seller_scoring_touched':False,'signals_created':0,'events_created':0,
       'watch_state_touched':False,'investigate_state_touched':False,'opportunity_data_touched':False,'outreach_touched':False
     }
+
+# V15U — market-exposure evidence rail readiness diagnostic.
+# This does NOT infer listing history from transfers or property characteristics.
+def market_exposure_evidence_readiness_v15u():
+    """READ ONLY: inventory whether a real listing/market-exposure evidence source is already persisted.
+
+    V15U deliberately refuses to manufacture market exposure from deed transfers, age, acreage,
+    value, or property type. It inventories the live schema and defines the evidence contract that
+    a future listing-history adapter must satisfy before this rail can influence research.
+    """
+    c=connect()
+    try:
+        canonical=execute(c,"SELECT COUNT(*) FROM properties WHERE district=? AND status='A'",(DISTRICT,)).fetchone()[0]
+        residential=execute(c,"""
+          SELECT COUNT(*)
+          FROM properties p JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
+          WHERE p.district=? AND p.status='A'
+            AND pc.method_version='V15D_ORPTS_BROAD_COHORT_V1'
+            AND pc.cohort IN ('RESIDENTIAL_IMPROVED','RESIDENTIAL_VACANT_LAND')
+        """,(DISTRICT,)).fetchone()[0]
+        if canonical != EXPECTED_CANONICAL or residential != EXPECTED_RESIDENTIAL_SIDE:
+            raise RuntimeError(f"universe guard failed: canonical={canonical}, residential={residential}")
+
+        if backend() == 'postgres':
+            schema_rows=execute(c,"""
+              SELECT table_name,column_name
+              FROM information_schema.columns
+              WHERE table_schema='public'
+              ORDER BY table_name,ordinal_position
+            """).fetchall()
+        else:
+            tables=execute(c,"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").fetchall()
+            schema_rows=[]
+            for t in tables:
+                tn=str(t[0])
+                for col in execute(c,f'PRAGMA table_info("{tn}")').fetchall():
+                    schema_rows.append((tn,str(col[1])))
+    finally:
+        c.close()
+
+    by_table={}
+    for table,col in schema_rows:
+        by_table.setdefault(str(table),[]).append(str(col))
+    exposure_terms=('listing','listed','list_','mls','withdraw','expire','cancel','market_status','days_on_market','dom','relist')
+    candidate_tables={}
+    for table,cols in by_table.items():
+        hits=sorted({col for col in cols if any(term in col.lower() for term in exposure_terms)})
+        if hits or any(term in table.lower() for term in exposure_terms):
+            candidate_tables[table]=hits
+
+    # Existing generic event/signal tables are not counted as listing evidence merely because
+    # they could store it someday. A qualifying rail requires actual listing-specific persisted fields/source.
+    listing_specific_tables={t:cols for t,cols in candidate_tables.items()
+                             if any(k in t.lower() for k in ('listing','mls','market_exposure'))}
+    ready=bool(listing_specific_tables)
+    return {
+      'status':'ok','version':'V15U','mode':'READ_ONLY_MARKET_EXPOSURE_EVIDENCE_READINESS',
+      'database_backend':backend(),'generated_at':utc(),
+      'scope':{'district':DISTRICT,'canonical_active_parcels':canonical,'residential_side_parcels':residential,
+               'all_residential_parcels_remain_eligible':True},
+      'market_exposure_rail_status':'PERSISTED_SOURCE_PRESENT_REQUIRES_CONTENT_VALIDATION' if ready else 'NOT_YET_CONNECTED',
+      'schema_candidate_tables':candidate_tables,
+      'listing_specific_persisted_tables':listing_specific_tables,
+      'evidence_contract':{
+        'required_identity':['parcel_id','source','source_record_id'],
+        'required_event_facts':['event_date','market_status_or_event_type'],
+        'desired_facts':['list_price','close_price','days_on_market','listing_id','observed_at'],
+        'provenance_required':True,'raw_source_preserved':True,'idempotent_ingest_required':True,
+        'property_match_must_be_auditable':True,
+      },
+      'recognized_event_vocabulary_for_future_normalization':[
+        'ACTIVE','COMING_SOON','PENDING','CONTRACT','WITHDRAWN','EXPIRED','CANCELED','CLOSED','RELISTED','PRICE_CHANGE','UNKNOWN'
+      ],
+      'source_policy':[
+        'Do not infer listing exposure from deed transfers, transfer age, property age, acreage, size, value, or geography.',
+        'Do not scrape or fabricate listing history when a licensed/authorized source is unavailable.',
+        'Preserve source-native status text and dates; normalization is additive and auditable.',
+        'Market exposure is an independent factual evidence rail, not proof of present seller intent.',
+        'No property loses universal research eligibility because listing-history data is absent.'
+      ],
+      'next_action':'CONNECT_AND_VALIDATE_AUTHORIZED_MARKET_EXPOSURE_SOURCE' if not ready else 'VALIDATE_PERSISTED_MARKET_EXPOSURE_CONTENT',
+      'database_writes':0,'seller_scoring_touched':False,'signals_created':0,'events_created':0,
+      'watch_state_touched':False,'investigate_state_touched':False,'opportunity_data_touched':False,'outreach_touched':False
+    }
