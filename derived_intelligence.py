@@ -949,3 +949,109 @@ def market_exposure_evidence_readiness_v15u():
       'database_writes':0,'seller_scoring_touched':False,'signals_created':0,'events_created':0,
       'watch_state_touched':False,'investigate_state_touched':False,'opportunity_data_touched':False,'outreach_touched':False
     }
+
+# V15V — property / parcel change-event evidence rail.
+# READ ONLY. Measures actual dated changes already present in authorized persisted evidence.
+# Static property characteristics are never converted into change events.
+def property_parcel_change_event_evidence_v15v():
+    """READ ONLY inventory of auditable property/parcel change-event evidence.
+
+    Current connected evidence supports dated Suffolk transfer/title-history records and
+    source-native parcel create/update metadata. Assessment is a single 2025 roll snapshot,
+    so V15V explicitly refuses to infer assessment change without a prior comparable roll.
+    """
+    c=connect()
+    try:
+        canonical=execute(c,"SELECT COUNT(*) FROM properties WHERE district=? AND status='A'",(DISTRICT,)).fetchone()[0]
+        if canonical != EXPECTED_CANONICAL:
+            raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {canonical}")
+        residential_rows=execute(c,"""
+          SELECT p.parcel_id,p.full_address,p.source_created_at,p.source_last_update,pc.cohort
+          FROM properties p JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
+          WHERE p.district=? AND p.status='A'
+            AND pc.method_version='V15D_ORPTS_BROAD_COHORT_V1'
+            AND pc.cohort IN ('RESIDENTIAL_IMPROVED','RESIDENTIAL_VACANT_LAND')
+          ORDER BY p.parcel_id
+        """,(DISTRICT,)).fetchall()
+        if len(residential_rows) != EXPECTED_RESIDENTIAL_SIDE:
+            raise RuntimeError(f"residential-side guard failed: expected {EXPECTED_RESIDENTIAL_SIDE}, found {len(residential_rows)}")
+        transfer_rows=execute(c,"""
+          SELECT parcel_id,record_date,document_date,sale_date,history_sequence
+          FROM transfers WHERE source='Suffolk TaxParcelTransferHistory'
+        """).fetchall()
+        assessment_rows=execute(c,"""
+          SELECT parcel_id,roll_year FROM assessment_evidence
+          WHERE source=?
+        """,(ASSESSMENT_SOURCE,)).fetchall()
+    finally:
+        c.close()
+
+    ids={str(r[0]) for r in residential_rows}; today=date.today()
+    g=_guarded_transfer_intelligence(transfer_rows,ids,today)
+
+    def age_years(d): return (today-d).days/365.2425 if d else None
+    def parse_source_date(v):
+        d=_date(v)
+        return d
+
+    transfer_windows=Counter(); parcel_created_windows=Counter(); parcel_updated_windows=Counter()
+    parcel_created_present=0; parcel_updated_present=0
+    recent_transfer_examples=[]; recent_created_examples=[]; recent_updated_examples=[]
+    addresses={str(r[0]):(str(r[1]).strip() if r[1] not in (None,'') else None) for r in residential_rows}
+    cohorts={str(r[0]):str(r[4]) for r in residential_rows}
+
+    for pid,d in g['valid_latest'].items():
+        yrs=age_years(d)
+        bucket='<=1Y' if yrs<=1 else '<=3Y' if yrs<=3 else '<=5Y' if yrs<=5 else '>5Y'
+        transfer_windows[bucket]+=1
+        if yrs<=3 and len(recent_transfer_examples)<25:
+            recent_transfer_examples.append({'parcel_id':pid,'address':addresses.get(pid),'factual_cohort':cohorts.get(pid),
+                                             'event_type':'VALID_RECORDED_TRANSFER_OR_TITLE_EVENT',
+                                             'event_date':d.isoformat(),'age_years':round(yrs,1)})
+
+    for r in residential_rows:
+        pid=str(r[0]); cd=parse_source_date(r[2]); ud=parse_source_date(r[3])
+        if cd:
+            parcel_created_present+=1; yrs=age_years(cd)
+            bucket='<=1Y' if yrs<=1 else '<=3Y' if yrs<=3 else '<=5Y' if yrs<=5 else '>5Y'; parcel_created_windows[bucket]+=1
+            if yrs<=3 and len(recent_created_examples)<25:
+                recent_created_examples.append({'parcel_id':pid,'address':addresses.get(pid),'factual_cohort':cohorts.get(pid),
+                                                'event_type':'SOURCE_PARCEL_CREATED_METADATA','event_date':cd.isoformat(),'age_years':round(yrs,1)})
+        if ud:
+            parcel_updated_present+=1; yrs=age_years(ud)
+            bucket='<=1Y' if yrs<=1 else '<=3Y' if yrs<=3 else '<=5Y' if yrs<=5 else '>5Y'; parcel_updated_windows[bucket]+=1
+            if yrs<=1 and len(recent_updated_examples)<25:
+                recent_updated_examples.append({'parcel_id':pid,'address':addresses.get(pid),'factual_cohort':cohorts.get(pid),
+                                                'event_type':'SOURCE_PARCEL_LAST_UPDATE_METADATA','event_date':ud.isoformat(),'age_years':round(yrs,1)})
+
+    roll_years=sorted({int(r[1]) for r in assessment_rows if r[1] is not None})
+    assessment_change_ready=len(roll_years)>=2
+    return {
+      'status':'ok','version':'V15V','mode':'READ_ONLY_PROPERTY_PARCEL_CHANGE_EVENT_EVIDENCE',
+      'database_backend':backend(),'generated_at':utc(),
+      'scope':{'district':DISTRICT,'canonical_active_parcels':canonical,'residential_side_parcels':len(residential_rows),
+               'all_residential_parcels_evaluated':True,'all_residential_parcels_remain_eligible':True},
+      'connected_change_evidence':{
+        'guarded_transfer_or_title_history':{'status':'CONNECTED','date_quality_guard':'V15S','parcels_with_valid_dated_evidence':len(g['valid_latest']),
+          'latest_event_age_windows':{k:int(transfer_windows.get(k,0)) for k in ('<=1Y','<=3Y','<=5Y','>5Y')},
+          'bounded_recent_examples':recent_transfer_examples},
+        'parcel_source_metadata':{'status':'CONNECTED_AS_METADATA_NOT_SELLER_SIGNAL','created_date_present':parcel_created_present,
+          'last_update_date_present':parcel_updated_present,
+          'created_age_windows':{k:int(parcel_created_windows.get(k,0)) for k in ('<=1Y','<=3Y','<=5Y','>5Y')},
+          'last_update_age_windows':{k:int(parcel_updated_windows.get(k,0)) for k in ('<=1Y','<=3Y','<=5Y','>5Y')},
+          'bounded_recent_created_examples':recent_created_examples,'bounded_recent_updated_examples':recent_updated_examples},
+        'assessment_change_history':{'status':'READY' if assessment_change_ready else 'NOT_YET_COMPARABLE',
+          'persisted_roll_years':roll_years,'requires_two_or_more_comparable_rolls':True}
+      },
+      'change_event_contract':[
+        'A change event must have an auditable source, parcel identity, event date, and event type.',
+        'V15S date-quality filtering applies to transfer/title dates before they enter this rail.',
+        'Source parcel created/updated timestamps are metadata facts and are not automatically physical property changes.',
+        'A single assessment roll cannot prove a property-value, building, or assessment change.',
+        'Static acreage, square footage, property age, value, land use, or location are context only and are never manufactured into change events.',
+        'A factual change event can justify research but is not proof of current seller intent or contact authorization.'
+      ],
+      'next_missing_change_sources':['comparable prior assessment roll(s)','permit / certificate / building-change history','parcel split / merge lineage with explicit predecessor-successor linkage'],
+      'database_writes':0,'seller_scoring_touched':False,'signals_created':0,'events_created':0,
+      'watch_state_touched':False,'investigate_state_touched':False,'opportunity_data_touched':False,'outreach_touched':False
+    }

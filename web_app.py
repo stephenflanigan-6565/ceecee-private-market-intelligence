@@ -7,7 +7,7 @@ from universe_profile import profile as profile_westhampton_universe
 from universe_classification import preview as preview_westhampton_classification, persist as persist_westhampton_classification
 from ownership_transfer_probe import probe_owner_only, probe_transfer_only, probe_owner_handshake, probe_transfer_history_handshake, probe_internal_failure_isolation, probe_coverage_v15i, ingest_evidence_v15j
 from assessment_probe import probe_assessment_v15k, persist_assessment_v15l
-from derived_intelligence import profile_v15m, candidate_matrix_v15n, location_context_profile_v15p, candidate_research_cohorts_v15q, transfer_date_quality_guard_v15r, transfer_intelligence_foundation_v15s, seller_opportunity_research_framework_v15t, market_exposure_evidence_readiness_v15u
+from derived_intelligence import profile_v15m, candidate_matrix_v15n, location_context_profile_v15p, candidate_research_cohorts_v15q, transfer_date_quality_guard_v15r, transfer_intelligence_foundation_v15s, seller_opportunity_research_framework_v15t, market_exposure_evidence_readiness_v15u, property_parcel_change_event_evidence_v15v
 
 app = Flask(__name__)
 
@@ -154,6 +154,16 @@ def westhampton_guarded_transfer_intelligence_v15s():
     except Exception as exc:
         return jsonify({"status":"degraded","version":"V15S","mode":"READ_ONLY_GUARDED_TRANSFER_INTELLIGENCE_FOUNDATION",
                         "error":str(exc),"database_writes":0,"seller_scoring_touched":False,
+                        "opportunity_data_touched":False,"outreach_touched":False}), 200
+
+@app.get("/api/westhampton-universe/property-parcel-change-events-v15v")
+def westhampton_property_parcel_change_events_v15v():
+    try:
+        return jsonify(property_parcel_change_event_evidence_v15v()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","version":"V15V","mode":"READ_ONLY_PROPERTY_PARCEL_CHANGE_EVENT_EVIDENCE",
+                        "error_type":type(e).__name__,"error":str(e)[:240],"database_writes":0,
+                        "seller_scoring_touched":False,"watch_state_touched":False,"investigate_state_touched":False,
                         "opportunity_data_touched":False,"outreach_touched":False}), 200
 
 @app.get("/api/westhampton-universe/market-exposure-evidence-readiness-v15u")
