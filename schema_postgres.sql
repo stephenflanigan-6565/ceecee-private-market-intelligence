@@ -1,10 +1,188 @@
+CREATE TABLE IF NOT EXISTS properties(
+ parcel_id TEXT PRIMARY KEY, district TEXT, section TEXT, block TEXT, lot TEXT,
+ municipality TEXT, zipcode TEXT, full_address TEXT, acreage DOUBLE PRECISION, frontage TEXT,
+ depth TEXT, land_use TEXT, title_flag TEXT, status TEXT, deed_acreage DOUBLE PRECISION,
+ source_created_at TEXT, source_last_update TEXT, first_seen_at TEXT NOT NULL,
+ last_seen_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS owners(
+ id BIGSERIAL PRIMARY KEY, parcel_id TEXT NOT NULL, owner_name TEXT,
+ first_name TEXT, last_name TEXT, first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
+ active INTEGER NOT NULL DEFAULT 1, UNIQUE(parcel_id,owner_name,first_name,last_name)
+);
+CREATE TABLE IF NOT EXISTS snapshots(
+ id BIGSERIAL PRIMARY KEY, parcel_id TEXT NOT NULL, source TEXT NOT NULL,
+ observed_at TEXT NOT NULL, payload_json TEXT NOT NULL, payload_hash TEXT NOT NULL,
+ UNIQUE(parcel_id,source,payload_hash)
+);
+CREATE TABLE IF NOT EXISTS events(
+ id BIGSERIAL PRIMARY KEY, parcel_id TEXT NOT NULL, event_type TEXT NOT NULL,
+ event_date TEXT, observed_at TEXT NOT NULL, source TEXT NOT NULL,
+ evidence_grade TEXT NOT NULL, details_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS signals(
+ id BIGSERIAL PRIMARY KEY, parcel_id TEXT NOT NULL, signal_type TEXT NOT NULL,
+ observed_at TEXT NOT NULL, source_event_id INTEGER, confidence TEXT NOT NULL DEFAULT 'HIGH',
+ active INTEGER NOT NULL DEFAULT 1, UNIQUE(parcel_id,signal_type,source_event_id)
+);
+CREATE TABLE IF NOT EXISTS opportunities(
+ parcel_id TEXT PRIMARY KEY, state TEXT NOT NULL DEFAULT 'IGNORE', why_now TEXT,
+ independent_signal_types INTEGER NOT NULL DEFAULT 0, compliance_state TEXT NOT NULL DEFAULT 'PENDING',
+ contact_state TEXT NOT NULL DEFAULT 'NEW', updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS source_runs(
+ id BIGSERIAL PRIMARY KEY, source TEXT NOT NULL, started_at TEXT NOT NULL,
+ completed_at TEXT, records_seen INTEGER DEFAULT 0, changed_records INTEGER DEFAULT 0,
+ status TEXT NOT NULL, error TEXT
+);
+CREATE TABLE IF NOT EXISTS outcomes(
+ id BIGSERIAL PRIMARY KEY, parcel_id TEXT NOT NULL, campaign_arm TEXT,
+ channel TEXT, response_state TEXT, appointment_state TEXT, listing_state TEXT,
+ closed_state TEXT, spend DOUBLE PRECISION, revenue DOUBLE PRECISION, observed_at TEXT NOT NULL, notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS transfers(
+ id BIGSERIAL PRIMARY KEY,
+ parcel_id TEXT NOT NULL,
+ history_sequence DOUBLE PRECISION,
+ liber_page TEXT,
+ record_date TEXT,
+ document_number TEXT,
+ document_code TEXT,
+ document_date TEXT,
+ entry_date TEXT,
+ sale_date TEXT,
+ sale_price DOUBLE PRECISION,
+ source TEXT NOT NULL,
+ observed_at TEXT NOT NULL,
+ UNIQUE(parcel_id,history_sequence,document_number,source)
+);
+CREATE INDEX IF NOT EXISTS idx_transfers_parcel ON transfers(parcel_id);
+CREATE INDEX IF NOT EXISTS idx_events_parcel ON events(parcel_id);
+CREATE INDEX IF NOT EXISTS idx_signals_parcel ON signals(parcel_id);
+
+CREATE TABLE IF NOT EXISTS transfer_parties(
+ id BIGSERIAL PRIMARY KEY,
+ parcel_id TEXT NOT NULL,
+ history_sequence DOUBLE PRECISION,
+ role TEXT NOT NULL,
+ first_name TEXT,
+ last_name TEXT,
+ middle_initial TEXT,
+ suffix TEXT,
+ ownership_percent DOUBLE PRECISION,
+ owner_type TEXT,
+ business_flag TEXT,
+ source TEXT NOT NULL,
+ observed_at TEXT NOT NULL,
+ UNIQUE(parcel_id,history_sequence,role,first_name,last_name,middle_initial,suffix)
+);
+CREATE TABLE IF NOT EXISTS property_context(
+ parcel_id TEXT PRIMARY KEY,
+ zoning_code TEXT,
+ zoning_name TEXT,
+ zoning_description TEXT,
+ zoning_dimensional_regulation TEXT,
+ building_footprint_present INTEGER,
+ context_observed_at TEXT NOT NULL,
+ context_source TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS parcel_lineage(
+ id BIGSERIAL PRIMARY KEY,
+ parcel_id TEXT NOT NULL,
+ status TEXT,
+ full_address TEXT,
+ acreage DOUBLE PRECISION,
+ frontage TEXT,
+ depth TEXT,
+ land_use TEXT,
+ source_created_at TEXT,
+ source_last_update TEXT,
+ observed_at TEXT NOT NULL,
+ source TEXT NOT NULL,
+ UNIQUE(parcel_id,status,source_last_update,source)
+);
+CREATE TABLE IF NOT EXISTS assessment_history(
+ id BIGSERIAL PRIMARY KEY,
+ parcel_id TEXT NOT NULL,
+ roll_year INTEGER NOT NULL,
+ assessed_land DOUBLE PRECISION,
+ assessed_total DOUBLE PRECISION,
+ market_value DOUBLE PRECISION,
+ acreage DOUBLE PRECISION,
+ property_class TEXT,
+ source TEXT NOT NULL,
+ observed_at TEXT NOT NULL,
+ UNIQUE(parcel_id,roll_year,source)
+);
+CREATE TABLE IF NOT EXISTS building_context(
+ parcel_id TEXT PRIMARY KEY,
+ building_count INTEGER,
+ footprint_area DOUBLE PRECISION,
+ footprint_perimeter DOUBLE PRECISION,
+ observed_at TEXT NOT NULL,
+ source TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS source_schedule(
+ source_key TEXT PRIMARY KEY,
+ cadence TEXT NOT NULL,
+ enabled INTEGER NOT NULL DEFAULT 1,
+ last_success_at TEXT,
+ next_due_at TEXT,
+ priority INTEGER NOT NULL DEFAULT 100,
+ notes TEXT
+);
+CREATE TABLE IF NOT EXISTS contact_governor(
+ parcel_id TEXT PRIMARY KEY,
+ opportunity_state TEXT NOT NULL,
+ why_now TEXT,
+ evidence_summary TEXT,
+ compliance_state TEXT NOT NULL DEFAULT 'NOT_CHECKED',
+ outreach_authorized INTEGER NOT NULL DEFAULT 0,
+ governor_decision TEXT NOT NULL DEFAULT 'NO_CONTACT',
+ updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS buyer_requirements(
+ id BIGSERIAL PRIMARY KEY,
+ buyer_key TEXT NOT NULL,
+ geography TEXT,
+ budget_min DOUBLE PRECISION,
+ budget_max DOUBLE PRECISION,
+ waterfront TEXT,
+ acreage_min DOUBLE PRECISION,
+ architecture TEXT,
+ beds_min INTEGER,
+ pool_required INTEGER,
+ dock_required INTEGER,
+ privacy_notes TEXT,
+ renovation_tolerance TEXT,
+ timing TEXT,
+ off_market_preference TEXT,
+ qualification_state TEXT,
+ active INTEGER NOT NULL DEFAULT 1,
+ observed_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS legacy_relationships(
+ id BIGSERIAL PRIMARY KEY,
+ person_key TEXT,
+ parcel_id TEXT,
+ source_system TEXT NOT NULL,
+ source_record_id TEXT,
+ relationship_date TEXT,
+ relationship_type TEXT,
+ notes TEXT,
+ confidence TEXT DEFAULT 'UNVERIFIED',
+ imported_at TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS runtime_runs(
  id BIGSERIAL PRIMARY KEY,
  run_key TEXT NOT NULL,
  job_name TEXT NOT NULL,
- started_at TIMESTAMPTZ NOT NULL,
- finished_at TIMESTAMPTZ,
+ started_at TEXT NOT NULL,
+ finished_at TEXT,
  status TEXT NOT NULL,
  attempt INTEGER NOT NULL DEFAULT 1,
  records_seen INTEGER NOT NULL DEFAULT 0,
@@ -14,67 +192,16 @@ CREATE TABLE IF NOT EXISTS runtime_runs(
 CREATE TABLE IF NOT EXISTS adapter_registry(
  adapter_key TEXT PRIMARY KEY,
  category TEXT NOT NULL,
- enabled BOOLEAN NOT NULL DEFAULT FALSE,
- credential_required BOOLEAN NOT NULL DEFAULT FALSE,
- paid BOOLEAN NOT NULL DEFAULT FALSE,
+ enabled INTEGER NOT NULL DEFAULT 0,
+ credential_required INTEGER NOT NULL DEFAULT 0,
+ paid INTEGER NOT NULL DEFAULT 0,
  status TEXT NOT NULL DEFAULT 'AVAILABLE',
- last_checked_at TIMESTAMPTZ,
+ last_checked_at TEXT,
  notes TEXT
-);
-CREATE TABLE IF NOT EXISTS source_schedule(
- source_key TEXT PRIMARY KEY,
- cadence TEXT NOT NULL,
- enabled BOOLEAN NOT NULL DEFAULT TRUE,
- last_success_at TIMESTAMPTZ,
- next_due_at TIMESTAMPTZ,
- priority INTEGER NOT NULL DEFAULT 100,
- notes TEXT
-);
-CREATE TABLE IF NOT EXISTS contact_governor(
- parcel_id TEXT PRIMARY KEY,
- opportunity_state TEXT NOT NULL,
- why_now TEXT,
- evidence_summary JSONB,
- compliance_state TEXT NOT NULL DEFAULT 'NOT_CHECKED',
- outreach_authorized BOOLEAN NOT NULL DEFAULT FALSE,
- governor_decision TEXT NOT NULL DEFAULT 'NO_CONTACT',
- updated_at TIMESTAMPTZ NOT NULL
-);
-CREATE TABLE IF NOT EXISTS buyer_requirements(
- id BIGSERIAL PRIMARY KEY,
- buyer_key TEXT NOT NULL,
- geography TEXT,
- budget_min NUMERIC,
- budget_max NUMERIC,
- waterfront TEXT,
- acreage_min NUMERIC,
- architecture TEXT,
- beds_min INTEGER,
- pool_required BOOLEAN,
- dock_required BOOLEAN,
- privacy_notes TEXT,
- renovation_tolerance TEXT,
- timing TEXT,
- off_market_preference TEXT,
- qualification_state TEXT,
- active BOOLEAN NOT NULL DEFAULT TRUE,
- observed_at TIMESTAMPTZ NOT NULL
-);
-CREATE TABLE IF NOT EXISTS legacy_relationships(
- id BIGSERIAL PRIMARY KEY,
- person_key TEXT,
- parcel_id TEXT,
- source_system TEXT NOT NULL,
- source_record_id TEXT,
- relationship_date DATE,
- relationship_type TEXT,
- notes TEXT,
- confidence TEXT DEFAULT 'UNVERIFIED',
- imported_at TIMESTAMPTZ NOT NULL
 );
 CREATE TABLE IF NOT EXISTS operator_snapshots(
  id BIGSERIAL PRIMARY KEY,
- generated_at TIMESTAMPTZ NOT NULL,
+ generated_at TEXT NOT NULL,
  ignore_count INTEGER NOT NULL DEFAULT 0,
  watch_count INTEGER NOT NULL DEFAULT 0,
  investigate_count INTEGER NOT NULL DEFAULT 0,
@@ -82,5 +209,5 @@ CREATE TABLE IF NOT EXISTS operator_snapshots(
  active_count INTEGER NOT NULL DEFAULT 0,
  contact_eligible_count INTEGER NOT NULL DEFAULT 0,
  failures_24h INTEGER NOT NULL DEFAULT 0,
- payload JSONB
+ payload TEXT
 );
