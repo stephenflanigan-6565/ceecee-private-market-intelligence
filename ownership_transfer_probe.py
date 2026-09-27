@@ -304,3 +304,150 @@ def probe_coverage_v15i():
         "measurement_only":True,"permanent_ingestion_performed":False
     })
     return result
+
+# V15J permanent factual evidence ingestion. No seller scoring or opportunity changes.
+def _iso_arcgis_date(value):
+    """Normalize ArcGIS epoch-millisecond dates to UTC ISO text; preserve unknown text safely."""
+    if value is None or value == "":
+        return None
+    try:
+        n=float(value)
+        # ArcGIS date fields are epoch milliseconds.
+        if abs(n) > 100000000000:
+            return datetime.fromtimestamp(n/1000.0, tz=timezone.utc).isoformat()
+    except (TypeError, ValueError, OverflowError):
+        pass
+    return str(value)
+
+def _ensure_v15j_tables(c):
+    id_def = "BIGSERIAL PRIMARY KEY" if backend()=="postgres" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    execute(c,f"""CREATE TABLE IF NOT EXISTS ownership_evidence(
+        id {id_def},
+        parcel_id TEXT NOT NULL,
+        source TEXT NOT NULL,
+        source_object_id TEXT NOT NULL,
+        owner_name TEXT,
+        first_name TEXT,
+        last_name TEXT,
+        evidence_grade TEXT NOT NULL,
+        verification_state TEXT NOT NULL,
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        UNIQUE(source,source_object_id)
+    )""")
+    execute(c,"CREATE INDEX IF NOT EXISTS idx_ownership_evidence_parcel ON ownership_evidence(parcel_id)")
+
+def _fetch_full_paged(url, fields, page_size=2000):
+    """District-bounded bulk fetch used only after V15I coverage validation."""
+    out=[]; offset=0; pages=0
+    while True:
+        data=fetch(url,{
+            "where":f"PARCELID LIKE '{DISTRICT_PREFIX}%'",
+            "outFields":fields,
+            "returnGeometry":"false",
+            "resultOffset":offset,
+            "resultRecordCount":page_size,
+            "orderByFields":"PARCELID",
+            "f":"json"
+        })
+        feats=data.get("features",[]); pages += 1
+        out.extend(x.get("attributes",{}) for x in feats)
+        if not feats: break
+        if len(feats) < page_size and not data.get("exceededTransferLimit"): break
+        offset += len(feats)
+        if pages >= 50: raise RuntimeError("V15J_PAGE_SAFETY_LIMIT")
+    return out,pages
+
+def ingest_evidence_v15j():
+    """Persist official current-owner evidence and transfer history for locked Westhampton universe."""
+    canonical=canonical_ids()
+    if len(canonical) != 2545:
+        raise RuntimeError(f"V15J_CANONICAL_COUNT_GUARD_{len(canonical)}")
+
+    # Fetch completely before opening the write transaction. If either source fails, write nothing.
+    owners,owner_pages=_fetch_full_paged(OWNER,"OBJECTID,PARCELID,FIRSTNAME,LASTNAME,OWNERNAME",2000)
+    history,hist_pages=_fetch_full_paged(TRANSFER_HISTORY,
+        "OBJECTID,PARCELID,LIBERPAGE,RECORDDATE,DOCNUM,DOCCODE,DOCDATE,ENTRYDATE,TRANSHISSEQ",2000)
+    owners=[a for a in owners if str(a.get("PARCELID")) in canonical]
+    history=[a for a in history if str(a.get("PARCELID")) in canonical]
+
+    now=utc(); source_owner="Suffolk TaxParcelOwner"; source_hist="Suffolk TaxParcelTransferHistory"
+    c=connect()
+    try:
+        _ensure_v15j_tables(c)
+        owner_inserted=owner_updated=owner_unchanged=0
+        for a in owners:
+            pid=str(a.get("PARCELID")); oid=str(a.get("OBJECTID"))
+            vals=(a.get("OWNERNAME"),a.get("FIRSTNAME"),a.get("LASTNAME"))
+            old=execute(c,"""SELECT parcel_id,owner_name,first_name,last_name,evidence_grade,verification_state
+                              FROM ownership_evidence WHERE source=? AND source_object_id=?""",
+                        (source_owner,oid)).fetchone()
+            if old is None:
+                execute(c,"""INSERT INTO ownership_evidence(parcel_id,source,source_object_id,owner_name,first_name,last_name,
+                          evidence_grade,verification_state,first_seen_at,last_seen_at)
+                          VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                        (pid,source_owner,oid,vals[0],vals[1],vals[2],"A","PROBABLE",now,now))
+                owner_inserted += 1
+            else:
+                oldvals=tuple(old)
+                desired=(pid,vals[0],vals[1],vals[2],"A","PROBABLE")
+                if oldvals == desired:
+                    execute(c,"UPDATE ownership_evidence SET last_seen_at=? WHERE source=? AND source_object_id=?",
+                            (now,source_owner,oid))
+                    owner_unchanged += 1
+                else:
+                    execute(c,"""UPDATE ownership_evidence SET parcel_id=?,owner_name=?,first_name=?,last_name=?,
+                              evidence_grade='A',verification_state='PROBABLE',last_seen_at=?
+                              WHERE source=? AND source_object_id=?""",
+                            (pid,vals[0],vals[1],vals[2],now,source_owner,oid))
+                    owner_updated += 1
+
+        transfer_inserted=transfer_updated=transfer_unchanged=0
+        for a in history:
+            pid=str(a.get("PARCELID")); seq=a.get("TRANSHISSEQ"); doc=a.get("DOCNUM")
+            vals=(a.get("LIBERPAGE"),_iso_arcgis_date(a.get("RECORDDATE")),a.get("DOCCODE"),
+                  _iso_arcgis_date(a.get("DOCDATE")),_iso_arcgis_date(a.get("ENTRYDATE")))
+            old=execute(c,"""SELECT id,liber_page,record_date,document_code,document_date,entry_date
+                              FROM transfers WHERE parcel_id=? AND source=?
+                              AND ((history_sequence=? ) OR (history_sequence IS NULL AND ? IS NULL))
+                              AND ((document_number=? ) OR (document_number IS NULL AND ? IS NULL))
+                              ORDER BY id LIMIT 1""",
+                        (pid,source_hist,seq,seq,doc,doc)).fetchone()
+            if old is None:
+                execute(c,"""INSERT INTO transfers(parcel_id,history_sequence,liber_page,record_date,document_number,
+                          document_code,document_date,entry_date,sale_date,sale_price,source,observed_at)
+                          VALUES(?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        (pid,seq,vals[0],vals[1],doc,vals[2],vals[3],vals[4],None,None,source_hist,now))
+                transfer_inserted += 1
+            else:
+                oldt=tuple(old); rid=oldt[0]
+                if tuple(oldt[1:]) == vals:
+                    transfer_unchanged += 1
+                else:
+                    execute(c,"""UPDATE transfers SET liber_page=?,record_date=?,document_code=?,document_date=?,entry_date=?,observed_at=?
+                              WHERE id=?""",(vals[0],vals[1],vals[2],vals[3],vals[4],now,rid))
+                    transfer_updated += 1
+
+        c.commit()
+        owner_total=execute(c,"SELECT COUNT(*) FROM ownership_evidence WHERE source=?",(source_owner,)).fetchone()[0]
+        owner_parcels=execute(c,"SELECT COUNT(DISTINCT parcel_id) FROM ownership_evidence WHERE source=?",(source_owner,)).fetchone()[0]
+        hist_total=execute(c,"SELECT COUNT(*) FROM transfers WHERE source=?",(source_hist,)).fetchone()[0]
+        hist_parcels=execute(c,"SELECT COUNT(DISTINCT parcel_id) FROM transfers WHERE source=?",(source_hist,)).fetchone()[0]
+        return {
+            "status":"ok","version":"V15J","mode":"OWNERSHIP_TRANSFER_EVIDENCE_PERSISTENCE",
+            "database_backend":backend(),"district":"0905","canonical_active_parcels":len(canonical),
+            "owner_source":{"source":source_owner,"pages":owner_pages,"records_fetched":len(owners),
+                "inserted":owner_inserted,"updated":owner_updated,"unchanged":owner_unchanged,
+                "persisted_records":owner_total,"parcels_covered":owner_parcels,
+                "evidence_grade":"A","default_verification_state":"PROBABLE"},
+            "transfer_history_source":{"source":source_hist,"pages":hist_pages,"records_fetched":len(history),
+                "inserted":transfer_inserted,"updated":transfer_updated,"unchanged":transfer_unchanged,
+                "persisted_records":hist_total,"parcels_covered":hist_parcels},
+            "ownership_verification_gate_active":True,
+            "seller_scoring_touched":False,"opportunity_data_touched":False,"outreach_touched":False,
+            "events_created":0,"signals_created":0,"generated_at":now
+        }
+    except Exception:
+        c.rollback(); raise
+    finally:
+        c.close()

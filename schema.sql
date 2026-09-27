@@ -213,3 +213,19 @@ CREATE TABLE IF NOT EXISTS operator_snapshots(
  failures_24h INTEGER NOT NULL DEFAULT 0,
  payload TEXT
 );
+
+CREATE TABLE IF NOT EXISTS ownership_evidence(
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ parcel_id TEXT NOT NULL,
+ source TEXT NOT NULL,
+ source_object_id TEXT NOT NULL,
+ owner_name TEXT,
+ first_name TEXT,
+ last_name TEXT,
+ evidence_grade TEXT NOT NULL,
+ verification_state TEXT NOT NULL,
+ first_seen_at TEXT NOT NULL,
+ last_seen_at TEXT NOT NULL,
+ UNIQUE(source,source_object_id)
+);
+CREATE INDEX IF NOT EXISTS idx_ownership_evidence_parcel ON ownership_evidence(parcel_id);
