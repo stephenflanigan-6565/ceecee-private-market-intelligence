@@ -5,7 +5,7 @@ from cloud_memory_check import verify_persistence
 from universe_collector import probe as probe_westhampton_universe, populate as populate_westhampton_universe
 from universe_profile import profile as profile_westhampton_universe
 from universe_classification import preview as preview_westhampton_classification, persist as persist_westhampton_classification
-from ownership_transfer_probe import probe as probe_westhampton_ownership_transfer
+from ownership_transfer_probe import probe_owner_only, probe_transfer_only
 
 app = Flask(__name__)
 
@@ -96,16 +96,25 @@ def westhampton_classification_persist_v15e():
                         "error":type(e).__name__,"seller_scoring_touched":False,
                         "opportunity_data_touched":False,"outreach_touched":False}), 503
 
-@app.get("/api/westhampton-universe/ownership-transfer-probe-v15f")
-def westhampton_ownership_transfer_probe_v15f():
+@app.get("/api/westhampton-universe/owner-probe-v15f1")
+def westhampton_owner_probe_v15f1():
     try:
-        return jsonify(probe_westhampton_ownership_transfer()), 200
+        return jsonify(probe_owner_only()), 200
     except Exception as e:
-        return jsonify({"status":"degraded","mode":"READ_ONLY_OWNERSHIP_TRANSFER_PROBE",
-                        "error":type(e).__name__,"database_writes":0,
-                        "ownership_data_touched":False,"transfer_data_touched":False,
-                        "seller_scoring_touched":False,"opportunity_data_touched":False,
-                        "outreach_touched":False}), 503
+        return jsonify({"status":"degraded","mode":"READ_ONLY_OWNER_SOURCE_DIAGNOSTIC",
+                        "error":str(e)[:80],"database_writes":0,"ownership_data_touched":False,
+                        "transfer_data_touched":False,"seller_scoring_touched":False,
+                        "opportunity_data_touched":False,"outreach_touched":False}), 503
+
+@app.get("/api/westhampton-universe/transfer-probe-v15f1")
+def westhampton_transfer_probe_v15f1():
+    try:
+        return jsonify(probe_transfer_only()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","mode":"READ_ONLY_CURRENT_TRANSFER_SOURCE_DIAGNOSTIC",
+                        "error":str(e)[:80],"database_writes":0,"ownership_data_touched":False,
+                        "transfer_data_touched":False,"seller_scoring_touched":False,
+                        "opportunity_data_touched":False,"outreach_touched":False}), 503
 
 @app.get("/api/status")
 def api_status():
