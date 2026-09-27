@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import datetime, timezone, date
 from db import connect, execute, backend
 
-VERSION = "V15M3"
+VERSION = "V15N"
 MODE = "READ_ONLY_DERIVED_INTELLIGENCE_POPULATION_PROFILE"
 DISTRICT = "0905"
 EXPECTED_CANONICAL = 2545
@@ -152,14 +152,110 @@ def profile_v15m():
         "transfer_record_count":_sorted_counter(transfer_bins,["0","1","2","3-5","6-10","11+"]),
         "ownership_evidence_party_count":_sorted_counter(owner_party_bins,["0","1","2","3+"]),
         "property_age_from_2025_assessment":_sorted_counter(age_bins,["<10y","10-<25y","25-<50y","50-<75y","75-<100y","100y+","MISSING"]),
-        "2025_full_market_value":_sorted_counter(fmv_bins,["<$500k","$500k-<$1m","$1m-<$2m","$2m-<$3m","$3m-<$5m","$5m-<$10m","$10m+","MISSING"]),
+        "2025_full_market_value": {"status":"SOURCE_UNUSABLE_ALL_ZERO","usable_positive_records":fmv_present,"raw_zero_records":fmv_zero,"note":"Raw source values are preserved in assessment evidence but are not interpreted as market value."},
         "acreage":_sorted_counter(acreage_bins,["<0.25","0.25-<0.5","0.5-<1","1-<2","2-<5","5+","MISSING"]),
       },
       "top_property_classes":dict(propclass.most_common(15)),"top_land_use_codes":dict(landuse.most_common(15)),
       "interpretation_limits":[
         "Latest recorded transfer age is not asserted to equal owner tenure; transfer records can reflect events other than an arm's-length ownership change.",
-        "2025 full-market value is assessment-roll evidence, not a live appraisal or current sale price.",
+        "2025 full-market-value is unavailable for intelligence use in this source snapshot because all persisted residential values are zero; raw source values remain preserved.",
         "No distribution bucket is a seller signal or contact authorization in V15M."
+      ],
+      "database_writes":0,"seller_scoring_touched":False,"signals_created":0,"events_created":0,
+      "opportunity_data_touched":False,"outreach_touched":False
+    }
+
+
+def candidate_matrix_v15n():
+    """READ ONLY factual candidate matrix. No seller score or contact authorization."""
+    c=connect()
+    try:
+        canonical=execute(c,"SELECT COUNT(*) FROM properties WHERE district=? AND status='A'",(DISTRICT,)).fetchone()[0]
+        if canonical != EXPECTED_CANONICAL:
+            raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {canonical}")
+        rows=execute(c,"""
+          SELECT p.parcel_id,p.land_use,p.acreage,
+                 a.property_class,a.year_built,a.living_sqft,a.acreage,
+                 a.full_market_value
+          FROM properties p
+          JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
+          LEFT JOIN assessment_evidence a
+            ON a.parcel_id=p.parcel_id AND a.source=? AND a.roll_year=?
+          WHERE p.district=? AND p.status='A'
+            AND pc.method_version='V15D_ORPTS_BROAD_COHORT_V1'
+            AND pc.cohort IN ('RESIDENTIAL_IMPROVED','RESIDENTIAL_VACANT_LAND')
+          ORDER BY p.parcel_id
+        """,(ASSESSMENT_SOURCE,ROLL_YEAR,DISTRICT)).fetchall()
+        if len(rows) != EXPECTED_RESIDENTIAL_SIDE:
+            raise RuntimeError(f"residential-side guard failed: expected {EXPECTED_RESIDENTIAL_SIDE}, found {len(rows)}")
+        transfer_rows=execute(c,"""
+          SELECT parcel_id,record_date,document_date,sale_date
+          FROM transfers WHERE source='Suffolk TaxParcelTransferHistory'
+        """).fetchall()
+        owner_rows=execute(c,"""
+          SELECT parcel_id,COUNT(*) FROM ownership_evidence
+          WHERE source='Suffolk TaxParcelOwner' GROUP BY parcel_id
+        """).fetchall()
+    finally:
+        c.close()
+
+    latest={}; transfer_count=Counter()
+    for r in transfer_rows:
+        pid=str(r[0]); transfer_count[pid]+=1
+        d=_date(r[3]) or _date(r[1]) or _date(r[2])
+        if d and (pid not in latest or d>latest[pid]): latest[pid]=d
+    owner_count={str(r[0]):int(r[1]) for r in owner_rows}
+    today=date.today()
+    dims=Counter(); combos=Counter(); data_quality=Counter(); landuse=Counter()
+    for r in rows:
+        pid=str(r[0]); lu=str(r[1]) if r[1] not in (None,"") else "MISSING"; landuse[lu]+=1
+        ld=latest.get(pid)
+        yrs=((today-ld).days/365.2425) if ld else None
+        yb=_int(r[4]); age=(today.year-yb) if yb and 1600<=yb<=today.year else None
+        ac=_num(r[6]) if _num(r[6]) is not None else _num(r[2])
+        sqft=_num(r[5]); tc=transfer_count.get(pid,0); oc=owner_count.get(pid,0)
+
+        t10=yrs is not None and yrs>=10; t20=yrs is not None and yrs>=20; t30=yrs is not None and yrs>=30
+        age25=age is not None and age>=25; age50=age is not None and age>=50
+        acre1=ac is not None and ac>=1; acre2=ac is not None and ac>=2
+        sqft2500=sqft is not None and sqft>=2500; sqft4000=sqft is not None and sqft>=4000
+        hist3=tc>=3; hist6=tc>=6; multi_owner=oc>=2
+        for key,val in {
+          "latest_transfer_10y_plus":t10,"latest_transfer_20y_plus":t20,"latest_transfer_30y_plus":t30,
+          "property_age_25y_plus":age25,"property_age_50y_plus":age50,
+          "acreage_1_plus":acre1,"acreage_2_plus":acre2,
+          "living_sqft_2500_plus":sqft2500,"living_sqft_4000_plus":sqft4000,
+          "transfer_history_3_plus":hist3,"transfer_history_6_plus":hist6,
+          "ownership_evidence_2_plus_parties":multi_owner}.items():
+            dims[key]+=int(val)
+        combo_flags={
+          "transfer_10y_plus_AND_property_age_25y_plus": t10 and age25,
+          "transfer_20y_plus_AND_property_age_25y_plus": t20 and age25,
+          "transfer_20y_plus_AND_acreage_1_plus": t20 and acre1,
+          "transfer_20y_plus_AND_sqft_2500_plus": t20 and sqft2500,
+          "transfer_20y_plus_AND_history_3_plus": t20 and hist3,
+          "transfer_20y_plus_AND_age25_AND_acre1": t20 and age25 and acre1,
+          "transfer_20y_plus_AND_age25_AND_sqft2500": t20 and age25 and sqft2500,
+          "transfer_20y_plus_AND_age25_AND_history3": t20 and age25 and hist3,
+          "transfer_30y_plus_AND_age25_AND_history3": t30 and age25 and hist3,
+          "transfer_20y_plus_AND_age25_AND_acre1_AND_history3": t20 and age25 and acre1 and hist3,
+        }
+        for key,val in combo_flags.items(): combos[key]+=int(val)
+        complete=sum([ld is not None,age is not None,ac is not None,sqft is not None,tc>0,oc>0])
+        data_quality[str(complete)+"/6 factual dimensions present"]+=1
+
+    return {
+      "status":"ok","version":"V15N","mode":"READ_ONLY_CANDIDATE_INTELLIGENCE_MATRIX","database_backend":backend(),"generated_at":utc(),
+      "scope":{"canonical_active_parcels":canonical,"residential_side_parcels":len(rows),"district":DISTRICT},
+      "factual_dimension_counts":dict(dims),
+      "intersection_counts":dict(combos),
+      "data_completeness":dict(sorted(data_quality.items())),
+      "full_market_value_policy":{"status":"SOURCE_UNUSABLE_ALL_ZERO","action":"EXCLUDED_FROM_CANDIDATE_MATRIX","raw_evidence_preserved":True},
+      "interpretation_limits":[
+        "Counts are factual intersections for population research, not seller scores, seller probabilities, or contact authorization.",
+        "Latest recorded transfer age is not asserted to equal owner tenure.",
+        "Multiple ownership-evidence parties are descriptive only and are not interpreted as motivation or ownership conflict.",
+        "Thresholds in V15N are measurement lenses used to inspect population size; they are not promoted WATCH or INVESTIGATE rules."
       ],
       "database_writes":0,"seller_scoring_touched":False,"signals_created":0,"events_created":0,
       "opportunity_data_touched":False,"outreach_touched":False
