@@ -6,7 +6,7 @@ from universe_collector import probe as probe_westhampton_universe, populate as 
 from universe_profile import profile as profile_westhampton_universe
 from universe_classification import preview as preview_westhampton_classification, persist as persist_westhampton_classification
 from ownership_transfer_probe import probe_owner_only, probe_transfer_only, probe_owner_handshake, probe_transfer_history_handshake, probe_internal_failure_isolation, probe_coverage_v15i, ingest_evidence_v15j
-from assessment_probe import probe_assessment_v15k
+from assessment_probe import probe_assessment_v15k, persist_assessment_v15l
 
 app = Flask(__name__)
 
@@ -109,6 +109,15 @@ def westhampton_assessment_probe_v15k():
                         "error_type":type(e).__name__,"error":str(e)[:240],"database_writes":0,
                         "assessment_data_touched":False,"seller_scoring_touched":False,
                         "opportunity_data_touched":False,"outreach_touched":False}), 200
+
+@app.get("/api/westhampton-universe/assessment-persist-v15l")
+def westhampton_assessment_persist_v15l():
+    try:
+        return jsonify(persist_assessment_v15l()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V15L","mode":"ASSESSMENT_VALUE_EVIDENCE_PERSISTENCE",
+                        "error_type":type(e).__name__,"error":str(e)[:240],
+                        "seller_scoring_touched":False,"opportunity_data_touched":False,"outreach_touched":False}), 200
 
 @app.get("/api/westhampton-universe/evidence-persist-v15j")
 def westhampton_evidence_persist_v15j():

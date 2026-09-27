@@ -227,3 +227,30 @@ CREATE TABLE IF NOT EXISTS ownership_evidence(
  UNIQUE(source,source_object_id)
 );
 CREATE INDEX IF NOT EXISTS idx_ownership_evidence_parcel ON ownership_evidence(parcel_id);
+
+CREATE TABLE IF NOT EXISTS assessment_evidence(
+ id BIGSERIAL PRIMARY KEY,
+ parcel_id TEXT NOT NULL,
+ source TEXT NOT NULL,
+ source_object_id TEXT,
+ roll_year INTEGER NOT NULL,
+ swis TEXT NOT NULL,
+ normalized_taxmap TEXT NOT NULL,
+ property_class TEXT,
+ acreage DOUBLE PRECISION,
+ assessed_land DOUBLE PRECISION,
+ assessed_total DOUBLE PRECISION,
+ full_market_value DOUBLE PRECISION,
+ year_built INTEGER,
+ living_sqft DOUBLE PRECISION,
+ bedrooms DOUBLE PRECISION,
+ full_baths DOUBLE PRECISION,
+ parcel_address TEXT,
+ building_style TEXT,
+ used_as TEXT,
+ evidence_grade TEXT NOT NULL DEFAULT 'A',
+ first_seen_at TEXT NOT NULL,
+ last_seen_at TEXT NOT NULL,
+ UNIQUE(parcel_id,source,roll_year)
+);
+CREATE INDEX IF NOT EXISTS idx_assessment_evidence_parcel ON assessment_evidence(parcel_id);

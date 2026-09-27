@@ -256,3 +256,117 @@ def probe_assessment_v15k():
       "database_writes":0,"assessment_data_touched":False,"seller_scoring_touched":False,
       "opportunity_data_touched":False,"outreach_touched":False
     }
+
+
+def _num(v):
+    if v in (None, ""): return None
+    try: return float(v)
+    except (TypeError, ValueError): return None
+
+def _int(v):
+    if v in (None, ""): return None
+    try: return int(float(v))
+    except (TypeError, ValueError): return None
+
+def _ensure_assessment_table(c):
+    if backend()=="postgres":
+        execute(c,"""CREATE TABLE IF NOT EXISTS assessment_evidence(
+          id BIGSERIAL PRIMARY KEY, parcel_id TEXT NOT NULL, source TEXT NOT NULL,
+          source_object_id TEXT, roll_year INTEGER NOT NULL, swis TEXT NOT NULL,
+          normalized_taxmap TEXT NOT NULL, property_class TEXT, acreage DOUBLE PRECISION,
+          assessed_land DOUBLE PRECISION, assessed_total DOUBLE PRECISION,
+          full_market_value DOUBLE PRECISION, year_built INTEGER, living_sqft DOUBLE PRECISION,
+          bedrooms DOUBLE PRECISION, full_baths DOUBLE PRECISION, parcel_address TEXT,
+          building_style TEXT, used_as TEXT, evidence_grade TEXT NOT NULL DEFAULT 'A',
+          first_seen_at TEXT NOT NULL, last_seen_at TEXT NOT NULL,
+          UNIQUE(parcel_id,source,roll_year))""")
+    else:
+        execute(c,"""CREATE TABLE IF NOT EXISTS assessment_evidence(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, parcel_id TEXT NOT NULL, source TEXT NOT NULL,
+          source_object_id TEXT, roll_year INTEGER NOT NULL, swis TEXT NOT NULL,
+          normalized_taxmap TEXT NOT NULL, property_class TEXT, acreage REAL,
+          assessed_land REAL, assessed_total REAL, full_market_value REAL,
+          year_built INTEGER, living_sqft REAL, bedrooms REAL, full_baths REAL,
+          parcel_address TEXT, building_style TEXT, used_as TEXT,
+          evidence_grade TEXT NOT NULL DEFAULT 'A', first_seen_at TEXT NOT NULL,
+          last_seen_at TEXT NOT NULL, UNIQUE(parcel_id,source,roll_year))""")
+    execute(c,"CREATE INDEX IF NOT EXISTS idx_assessment_evidence_parcel ON assessment_evidence(parcel_id)")
+
+def persist_assessment_v15l():
+    """Persist only exact, collision-free 2025 ORPTS-to-current-canonical matches proven by V15K7/V15K8."""
+    c=connect()
+    try:
+        rows=execute(c,"SELECT parcel_id,section,block,lot FROM properties WHERE district=? AND status='A'",(DISTRICT,)).fetchall()
+    finally:
+        c.close()
+    if len(rows)!=EXPECTED_CANONICAL:
+        raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {len(rows)}")
+    canonical={}
+    for r in rows: canonical.setdefault(canonical_key(r[1],r[2],r[3]),[]).append(str(r[0]))
+    if any(None in k or len(v)!=1 for k,v in canonical.items()):
+        raise RuntimeError("canonical normalization guard failed: null key or collision")
+
+    pages,state_rows=fetch_state_rows()
+    parsed=[]
+    for a in state_rows:
+        k=key_from_sbl(a.get("SBL")) or key_from_sbl(a.get("PRINT_KEY"))
+        if k is not None: parsed.append((k,a))
+    counts=Counter(k for k,_ in parsed)
+    if any(n>1 for n in counts.values()):
+        raise RuntimeError("state normalization guard failed: duplicate normalized assessment key")
+    state_by_key={k:a for k,a in parsed}
+    matched=sorted(set(canonical)&set(state_by_key))
+    matched_parcels=sum(len(canonical[k]) for k in matched)
+    if matched_parcels!=2490:
+        raise RuntimeError(f"proven-match guard failed: expected 2490, found {matched_parcels}")
+
+    now=utc(); inserted=updated=unchanged=0
+    c=connect()
+    try:
+        _ensure_assessment_table(c)
+        for k in matched:
+            pid=canonical[k][0]; a=state_by_key[k]
+            roll=_int(a.get("ROLL_YR"))
+            if roll!=2025: raise RuntimeError(f"roll-year guard failed for {pid}: {roll}")
+            values=(
+              str(a.get("OBJECTID")) if a.get("OBJECTID") is not None else None,
+              SWIS,"-".join(k),str(a.get("PROP_CLASS")) if a.get("PROP_CLASS") not in (None,"") else None,
+              _num(a.get("ACRES")),_num(a.get("LAND_AV")),_num(a.get("TOTAL_AV")),_num(a.get("FULL_MARKET_VAL")),
+              _int(a.get("YR_BLT")),_num(a.get("SQFT_LIVING")),_num(a.get("NBR_BEDROOMS")),_num(a.get("NBR_FULL_BATHS")),
+              a.get("PARCEL_ADDR"),a.get("BLDG_STYLE_DESC"),a.get("USED_AS_DESC")
+            )
+            old=execute(c,"""SELECT source_object_id,swis,normalized_taxmap,property_class,acreage,assessed_land,
+                assessed_total,full_market_value,year_built,living_sqft,bedrooms,full_baths,parcel_address,
+                building_style,used_as FROM assessment_evidence WHERE parcel_id=? AND source=? AND roll_year=?""",
+                (pid,SOURCE,roll)).fetchone()
+            if old is None:
+                execute(c,"""INSERT INTO assessment_evidence(parcel_id,source,source_object_id,roll_year,swis,
+                  normalized_taxmap,property_class,acreage,assessed_land,assessed_total,full_market_value,year_built,
+                  living_sqft,bedrooms,full_baths,parcel_address,building_style,used_as,evidence_grade,first_seen_at,last_seen_at)
+                  VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                  (pid,SOURCE,values[0],roll,*values[1:],"A",now,now))
+                inserted+=1
+            elif tuple(old)==values:
+                execute(c,"UPDATE assessment_evidence SET last_seen_at=? WHERE parcel_id=? AND source=? AND roll_year=?",
+                        (now,pid,SOURCE,roll)); unchanged+=1
+            else:
+                execute(c,"""UPDATE assessment_evidence SET source_object_id=?,swis=?,normalized_taxmap=?,property_class=?,
+                  acreage=?,assessed_land=?,assessed_total=?,full_market_value=?,year_built=?,living_sqft=?,bedrooms=?,
+                  full_baths=?,parcel_address=?,building_style=?,used_as=?,evidence_grade='A',last_seen_at=?
+                  WHERE parcel_id=? AND source=? AND roll_year=?""", (*values,now,pid,SOURCE,roll))
+                updated+=1
+        c.commit()
+        total=execute(c,"SELECT COUNT(*) FROM assessment_evidence WHERE source=? AND roll_year=2025",(SOURCE,)).fetchone()[0]
+    except Exception:
+        c.rollback(); raise
+    finally:
+        c.close()
+    return {
+      "status":"ok","version":"V15L","mode":"ASSESSMENT_VALUE_EVIDENCE_PERSISTENCE",
+      "database_backend":backend(),"source":SOURCE,"swis":SWIS,"roll_year":2025,"pages":pages,
+      "records_fetched":len(state_rows),"canonical_active_parcels":len(rows),"matched_canonical_parcels":matched_parcels,
+      "unmatched_canonical_parcels":len(rows)-matched_parcels,"inserted":inserted,"updated":updated,
+      "unchanged":unchanged,"persisted_records":total,"evidence_grade":"A","generated_at":utc(),
+      "residual_policy":"55 current canonical parcels remain without fabricated 2025 assessment evidence; lineage-sensitive residuals stay unresolved.",
+      "seller_scoring_touched":False,"signals_created":0,"events_created":0,"opportunity_data_touched":False,"outreach_touched":False
+    }
