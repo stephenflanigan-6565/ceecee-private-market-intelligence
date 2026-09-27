@@ -7,7 +7,7 @@ from universe_profile import profile as profile_westhampton_universe
 from universe_classification import preview as preview_westhampton_classification, persist as persist_westhampton_classification
 from ownership_transfer_probe import probe_owner_only, probe_transfer_only, probe_owner_handshake, probe_transfer_history_handshake, probe_internal_failure_isolation, probe_coverage_v15i, ingest_evidence_v15j
 from assessment_probe import probe_assessment_v15k, persist_assessment_v15l
-from derived_intelligence import profile_v15m, candidate_matrix_v15n
+from derived_intelligence import profile_v15m, candidate_matrix_v15n, location_context_profile_v15p
 
 app = Flask(__name__)
 
@@ -117,6 +117,15 @@ def westhampton_derived_intelligence_profile_v15m():
         return jsonify(profile_v15m()), 200
     except Exception as exc:
         return jsonify({"status":"degraded","version":"V15M","mode":"READ_ONLY_DERIVED_INTELLIGENCE_POPULATION_PROFILE",
+                        "error":str(exc),"database_writes":0,"seller_scoring_touched":False,
+                        "opportunity_data_touched":False,"outreach_touched":False}), 200
+
+@app.get("/api/westhampton-universe/location-context-profile-v15p")
+def westhampton_location_context_profile_v15p():
+    try:
+        return jsonify(location_context_profile_v15p()), 200
+    except Exception as exc:
+        return jsonify({"status":"degraded","version":"V15P","mode":"READ_ONLY_LOCATION_CONTEXT_PROFILE",
                         "error":str(exc),"database_writes":0,"seller_scoring_touched":False,
                         "opportunity_data_touched":False,"outreach_touched":False}), 200
 

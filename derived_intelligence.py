@@ -260,3 +260,98 @@ def candidate_matrix_v15n():
       "database_writes":0,"seller_scoring_touched":False,"signals_created":0,"events_created":0,
       "opportunity_data_touched":False,"outreach_touched":False
     }
+
+
+def location_context_profile_v15p():
+    """READ ONLY location/context profile using persisted factual parcel attributes.
+
+    V15P does not infer waterfront, oceanfront, bayfront, village-core, or seller
+    motivation. Dune Road is identified only from the persisted parcel address.
+    """
+    c=connect()
+    try:
+        canonical=execute(c,"SELECT COUNT(*) FROM properties WHERE district=? AND status='A'",(DISTRICT,)).fetchone()[0]
+        if canonical != EXPECTED_CANONICAL:
+            raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {canonical}")
+        rows=execute(c,"""
+          SELECT p.parcel_id,p.full_address,p.municipality,p.zipcode,p.land_use,p.acreage,
+                 a.year_built,a.living_sqft,a.acreage,
+                 pc.cohort
+          FROM properties p
+          JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
+          LEFT JOIN assessment_evidence a
+            ON a.parcel_id=p.parcel_id AND a.source=? AND a.roll_year=?
+          WHERE p.district=? AND p.status='A'
+            AND pc.method_version='V15D_ORPTS_BROAD_COHORT_V1'
+            AND pc.cohort IN ('RESIDENTIAL_IMPROVED','RESIDENTIAL_VACANT_LAND')
+          ORDER BY p.parcel_id
+        """,(ASSESSMENT_SOURCE,ROLL_YEAR,DISTRICT)).fetchall()
+        if len(rows) != EXPECTED_RESIDENTIAL_SIDE:
+            raise RuntimeError(f"residential-side guard failed: expected {EXPECTED_RESIDENTIAL_SIDE}, found {len(rows)}")
+        transfer_rows=execute(c,"""
+          SELECT parcel_id,record_date,document_date,sale_date
+          FROM transfers WHERE source='Suffolk TaxParcelTransferHistory'
+        """).fetchall()
+    finally:
+        c.close()
+
+    latest={}
+    for r in transfer_rows:
+        pid=str(r[0]); d=_date(r[3]) or _date(r[1]) or _date(r[2])
+        if d and (pid not in latest or d>latest[pid]): latest[pid]=d
+
+    today=date.today(); counts=Counter(); combos=Counter(); zips=Counter(); municipalities=Counter(); address_coverage=0
+    for r in rows:
+        pid=str(r[0]); address=(str(r[1]).strip() if r[1] not in (None,'') else '')
+        municipality=(str(r[2]).strip() if r[2] not in (None,'') else 'MISSING')
+        zipcode=(str(r[3]).strip() if r[3] not in (None,'') else 'MISSING')
+        lu=str(r[4]).strip() if r[4] not in (None,'') else 'MISSING'
+        cohort=str(r[9])
+        if address: address_coverage += 1
+        municipalities[municipality]+=1; zips[zipcode]+=1
+
+        au=address.upper()
+        # Address-derived corridor only. This deliberately does NOT assert waterfront.
+        dune=('DUNE RD' in au or 'DUNE ROAD' in au)
+        seasonal=(lu=='260')
+        vacant=(cohort=='RESIDENTIAL_VACANT_LAND')
+        improved=(cohort=='RESIDENTIAL_IMPROVED')
+        ac=_num(r[8]) if _num(r[8]) is not None else _num(r[5])
+        yb=_int(r[6]); age=(today.year-yb) if yb and 1600<=yb<=today.year else None
+        sqft=_num(r[7])
+        ld=latest.get(pid); yrs=((today-ld).days/365.2425) if ld else None
+        t10=yrs is not None and yrs>=10; t20=yrs is not None and yrs>=20
+        age25=age is not None and age>=25; acre1=ac is not None and ac>=1; sqft2500=sqft is not None and sqft>=2500
+
+        for k,v in {
+          'dune_road_address':dune,'seasonal_residential_landuse_260':seasonal,
+          'residential_vacant_land':vacant,'residential_improved':improved,
+          'acreage_1_plus':acre1,'living_sqft_2500_plus':sqft2500}.items(): counts[k]+=int(v)
+        for k,v in {
+          'dune_road_AND_transfer_10y_plus':dune and t10,
+          'dune_road_AND_transfer_20y_plus':dune and t20,
+          'dune_road_AND_age25_plus':dune and age25,
+          'dune_road_AND_sqft2500_plus':dune and sqft2500,
+          'dune_road_AND_transfer20_AND_age25':dune and t20 and age25,
+          'seasonal260_AND_transfer20_plus':seasonal and t20,
+          'vacant_land_AND_transfer20_plus':vacant and t20,
+          'acre1_plus_AND_transfer20_plus':acre1 and t20,
+        }.items(): combos[k]+=int(v)
+
+    return {
+      'status':'ok','version':'V15P','mode':'READ_ONLY_LOCATION_CONTEXT_PROFILE','database_backend':backend(),'generated_at':utc(),
+      'scope':{'district':DISTRICT,'canonical_active_parcels':canonical,'residential_side_parcels':len(rows)},
+      'coverage':{'parcel_address_present':address_coverage,'parcel_address_missing':len(rows)-address_coverage},
+      'location_context_counts':dict(counts),
+      'location_history_intersections':dict(combos),
+      'municipality_values':dict(municipalities.most_common()),
+      'zipcode_values':dict(zips.most_common()),
+      'interpretation_limits':[
+        'Dune Road is identified only by the persisted parcel-address text containing DUNE RD or DUNE ROAD.',
+        'Dune Road is a corridor label only; V15P does not infer oceanfront, bayfront, waterfront, view, access, or market value.',
+        'Seasonal residential and vacant-land labels come from factual persisted land-use/cohort data; they are not seller signals.',
+        'Location/history intersections are population research only and do not authorize WATCH, INVESTIGATE, scoring, or contact.'
+      ],
+      'database_writes':0,'seller_scoring_touched':False,'signals_created':0,'events_created':0,
+      'opportunity_data_touched':False,'outreach_touched':False
+    }
