@@ -1,6 +1,7 @@
 import os
 from flask import Flask, jsonify, render_template_string
 from operator_report import build_snapshot
+from cloud_memory_check import verify_persistence
 
 app = Flask(__name__)
 
@@ -34,6 +35,13 @@ small{color:#666}
 @app.get("/health")
 def health():
     return jsonify({"status":"ok","service":"ceecee-private-market-intelligence"}), 200
+
+@app.get("/api/cloud-memory-check")
+def cloud_memory_check():
+    try:
+        return jsonify(verify_persistence()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","error":type(e).__name__}), 503
 
 @app.get("/api/status")
 def api_status():
