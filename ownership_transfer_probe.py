@@ -18,7 +18,7 @@ def utc(): return datetime.now(timezone.utc).isoformat()
 def canonical_ids():
     c=connect()
     try:
-        rows=execute(c,"SELECT parcel_id FROM properties WHERE district=? AND active=1",("0905",)).fetchall()
+        rows=execute(c,"SELECT parcel_id FROM properties WHERE district=? AND status='A'",("0905",)).fetchall()
         return {str(r[0]) for r in rows}
     finally:
         c.close()
@@ -94,7 +94,7 @@ def probe_transfer_only():
 def _one_canonical_id():
     c=connect()
     try:
-        row=execute(c,"SELECT parcel_id FROM properties WHERE district=? AND active=1 ORDER BY parcel_id LIMIT 1",("0905",)).fetchone()
+        row=execute(c,"SELECT parcel_id FROM properties WHERE district=? AND status='A' ORDER BY parcel_id LIMIT 1",("0905",)).fetchone()
         if not row:
             raise RuntimeError("NO_CANONICAL_PARCEL")
         return str(row[0])
