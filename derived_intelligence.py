@@ -9,7 +9,7 @@ from collections import Counter
 from datetime import datetime, timezone, date
 from db import connect, execute, backend
 
-VERSION = "V15M"
+VERSION = "V15M2"
 MODE = "READ_ONLY_DERIVED_INTELLIGENCE_POPULATION_PROFILE"
 DISTRICT = "0905"
 EXPECTED_CANONICAL = 2545
@@ -52,17 +52,20 @@ def profile_v15m():
         if canonical != EXPECTED_CANONICAL:
             raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {canonical}")
 
-        # Reuse the already-proven V15D/V15E factual cohort definition at its
-        # source-data level: 2xx residential improved + 31x residential vacant.
+        # Reuse the PROVEN/PERSISTED V15E cohort layer directly. Do not
+        # reconstruct the cohort with a new SQL shorthand: V15E intentionally
+        # defines residential vacant land as a selected exact-code set.
         rows=execute(c,"""
           SELECT p.parcel_id,p.land_use,p.acreage,p.source_created_at,p.source_last_update,
                  a.property_class,a.acreage,a.full_market_value,a.year_built,a.living_sqft,
                  a.bedrooms,a.full_baths
           FROM properties p
+          JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
           LEFT JOIN assessment_evidence a
             ON a.parcel_id=p.parcel_id AND a.source=? AND a.roll_year=?
           WHERE p.district=? AND p.status='A'
-            AND (p.land_use LIKE '2%%' OR p.land_use LIKE '31%%')
+            AND pc.method_version='V15D_ORPTS_BROAD_COHORT_V1'
+            AND pc.cohort IN ('RESIDENTIAL_IMPROVED','RESIDENTIAL_VACANT_LAND')
           ORDER BY p.parcel_id
         """,(ASSESSMENT_SOURCE,ROLL_YEAR,DISTRICT)).fetchall()
         if len(rows) != EXPECTED_RESIDENTIAL_SIDE:
