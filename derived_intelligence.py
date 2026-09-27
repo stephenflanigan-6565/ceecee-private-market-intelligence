@@ -635,3 +635,91 @@ def transfer_date_quality_guard_v15r():
       'database_writes':0,'seller_scoring_touched':False,'signals_created':0,'events_created':0,
       'opportunity_data_touched':False,'outreach_touched':False
     }
+
+
+# V15S — reusable guarded transfer intelligence foundation.
+# This is the single upstream derivation path for transfer dates used by new intelligence modules.
+def _guarded_transfer_intelligence(transfer_rows, residential_ids=None, today=None):
+    today = today or date.today()
+    raw_count=Counter(); valid_count=Counter(); quality_counts=Counter()
+    raw_latest={}; valid_latest={}; suspect_by_parcel=Counter()
+    for r in transfer_rows:
+        pid=str(r[0])
+        if residential_ids is not None and pid not in residential_ids:
+            continue
+        d=_date(r[3]) or _date(r[1]) or _date(r[2])
+        q=_transfer_date_quality(d,today)
+        raw_count[pid]+=1; quality_counts[q]+=1
+        if d and (pid not in raw_latest or d>raw_latest[pid]): raw_latest[pid]=d
+        if q == "VALID":
+            valid_count[pid]+=1
+            if pid not in valid_latest or d>valid_latest[pid]: valid_latest[pid]=d
+        elif q.startswith("SUSPECT"):
+            suspect_by_parcel[pid]+=1
+    return {
+        "raw_count":raw_count,"valid_count":valid_count,"quality_counts":quality_counts,
+        "raw_latest":raw_latest,"valid_latest":valid_latest,"suspect_by_parcel":suspect_by_parcel,
+    }
+
+
+def transfer_intelligence_foundation_v15s():
+    """READ ONLY proof that the V15R guard is reusable as an upstream intelligence foundation."""
+    c=connect()
+    try:
+        canonical=execute(c,"SELECT COUNT(*) FROM properties WHERE district=? AND status='A'",(DISTRICT,)).fetchone()[0]
+        if canonical != EXPECTED_CANONICAL:
+            raise RuntimeError(f"canonical guard failed: expected {EXPECTED_CANONICAL}, found {canonical}")
+        residential_rows=execute(c,"""
+          SELECT p.parcel_id,p.full_address
+          FROM properties p
+          JOIN property_classifications pc ON pc.parcel_id=p.parcel_id
+          WHERE p.district=? AND p.status='A'
+            AND pc.method_version='V15D_ORPTS_BROAD_COHORT_V1'
+            AND pc.cohort IN ('RESIDENTIAL_IMPROVED','RESIDENTIAL_VACANT_LAND')
+          ORDER BY p.parcel_id
+        """,(DISTRICT,)).fetchall()
+        if len(residential_rows) != EXPECTED_RESIDENTIAL_SIDE:
+            raise RuntimeError(f"residential-side guard failed: expected {EXPECTED_RESIDENTIAL_SIDE}, found {len(residential_rows)}")
+        transfer_rows=execute(c,"""
+          SELECT parcel_id,record_date,document_date,sale_date
+          FROM transfers WHERE source='Suffolk TaxParcelTransferHistory'
+        """).fetchall()
+    finally:
+        c.close()
+
+    ids={str(r[0]) for r in residential_rows}; today=date.today()
+    g=_guarded_transfer_intelligence(transfer_rows,ids,today)
+    changed=[]; no_valid=[]
+    for r in residential_rows:
+        pid=str(r[0]); raw=g['raw_latest'].get(pid); valid=g['valid_latest'].get(pid)
+        if raw != valid:
+            item={"parcel_id":pid,"address":str(r[1]).strip() if r[1] not in (None,'') else None,
+                  "raw_latest_transfer_date":raw.isoformat() if raw else None,
+                  "guarded_latest_transfer_date":valid.isoformat() if valid else None,
+                  "suspect_transfer_records":int(g['suspect_by_parcel'].get(pid,0)),
+                  "guarded_latest_quality":"VALID" if valid else "NO_VALID_TRANSFER_DATE"}
+            changed.append(item)
+            if valid is None: no_valid.append(pid)
+    return {
+      "status":"ok","version":"V15S","mode":"READ_ONLY_GUARDED_TRANSFER_INTELLIGENCE_FOUNDATION",
+      "database_backend":backend(),"generated_at":utc(),
+      "scope":{"district":DISTRICT,"canonical_active_parcels":canonical,"residential_side_parcels":len(residential_rows),
+               "all_residential_parcels_evaluated":True},
+      "foundation_policy":{"raw_evidence_preserved":True,"minimum_plausible_transfer_date":V15R_MIN_TRANSFER_DATE.isoformat(),
+                           "future_dates_suspect":True,"derived_modules_use_guarded_latest_transfer_date":True,
+                           "missing_valid_date_is_not_imputed":True},
+      "transfer_record_quality_counts":dict(g['quality_counts']),
+      "parcels_with_any_valid_transfer_date":len(g['valid_latest']),
+      "parcels_with_suspect_transfer_records":len(g['suspect_by_parcel']),
+      "parcels_with_changed_latest_date_after_guard":len(changed),
+      "parcels_with_no_valid_transfer_date_after_guard":len(no_valid),
+      "changed_latest_date_details":changed,
+      "foundation_contract":[
+        "New derived-intelligence modules consume guarded_latest_transfer_date, not raw latest transfer date.",
+        "Raw Suffolk transfer evidence remains immutable and auditable.",
+        "A missing guarded date remains missing; V15S does not invent tenure or seller intent.",
+        "Transfer date and transfer age are factual research dimensions, never universal seller-eligibility gates."
+      ],
+      "database_writes":0,"seller_scoring_touched":False,"signals_created":0,"events_created":0,
+      "opportunity_data_touched":False,"outreach_touched":False
+    }
