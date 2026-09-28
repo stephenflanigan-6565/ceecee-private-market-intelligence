@@ -12,7 +12,7 @@ from evidence_memory import build_evidence_memory_v16a
 from change_detection import build_change_detection_v16b
 from opportunity_pathways import build_opportunity_pathways_v16c
 from investigation_queue import build_investigation_queue_v16d
-from query_shape_isolation import diagnose_suffolk_query_shape_v16e2
+from bounded_acquisition_proof import prove_suffolk_bounded_acquisition_v16e3
 
 app = Flask(__name__)
 
@@ -190,13 +190,9 @@ def opportunity_pathways_v16c():
                         "outreach_touched":False,"contact_authorized":False}), 200
 
 
-@app.get("/api/intelligence/query-shape-isolation-v16e2")
-def query_shape_isolation_v16e2():
-    try:
-        return jsonify(diagnose_suffolk_query_shape_v16e2()), 200
-    except Exception as e:
-        return jsonify({"status":"degraded","version":"V16E2","mode":"SUFFOLK_EXACT_QUERY_SHAPE_ISOLATION",
-                        "writes_performed":0,"error_type":type(e).__name__,"error":str(e)[:400]}), 200
+@app.get("/api/intelligence/bounded-acquisition-proof-v16e3")
+def bounded_acquisition_proof_v16e3():
+    return jsonify(prove_suffolk_bounded_acquisition_v16e3()), 200
 
 @app.get("/api/intelligence/investigation-queue-v16d")
 def investigation_queue_v16d():
