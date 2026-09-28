@@ -12,7 +12,7 @@ from evidence_memory import build_evidence_memory_v16a
 from change_detection import build_change_detection_v16b
 from opportunity_pathways import build_opportunity_pathways_v16c
 from investigation_queue import build_investigation_queue_v16d
-from live_evidence_refresh import refresh_suffolk_title_ownership_v16e
+from source_access_isolation import diagnose_suffolk_source_access_v16e1
 
 app = Flask(__name__)
 
@@ -190,6 +190,14 @@ def opportunity_pathways_v16c():
                         "outreach_touched":False,"contact_authorized":False}), 200
 
 
+@app.get("/api/intelligence/source-access-isolation-v16e1")
+def source_access_isolation_v16e1():
+    try:
+        return jsonify(diagnose_suffolk_source_access_v16e1()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","version":"V16E1","mode":"SUFFOLK_SOURCE_ACCESS_ISOLATION",
+                        "writes_performed":0,"error_type":type(e).__name__,"error":str(e)[:400]}), 200
+
 @app.get("/api/intelligence/investigation-queue-v16d")
 def investigation_queue_v16d():
     try:
@@ -198,15 +206,6 @@ def investigation_queue_v16d():
         return jsonify({"status":"degraded","version":"V16D","mode":"OPERATIONAL_INVESTIGATION_STATE_AND_EXPLAINABLE_QUEUE",
                         "error_type":type(e).__name__,"error":str(e)[:300],"seller_scoring":False,
                         "seller_intent_inferred":False,"outreach_touched":False,"contact_authorized":False}), 200
-
-@app.get("/api/intelligence/live-evidence-refresh-v16e")
-def live_evidence_refresh_v16e():
-    try:
-        return jsonify(refresh_suffolk_title_ownership_v16e()), 200
-    except Exception as e:
-        return jsonify({"status":"degraded","version":"V16E","mode":"LIVE_SUFFOLK_TITLE_OWNERSHIP_REFRESH_RAIL",
-                        "error_type":type(e).__name__,"error":str(e)[:400],"seller_intent_inferred":False,
-                        "seller_scoring":False,"contact_authorized":False,"outreach_touched":False}), 200
 
 @app.get("/api/westhampton-universe/permit-building-change-source-readiness-v15w")
 def westhampton_permit_building_change_source_readiness_v15w():
