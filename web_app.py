@@ -8,13 +8,14 @@ from universe_classification import preview as preview_westhampton_classificatio
 from ownership_transfer_probe import probe_owner_only, probe_transfer_only, probe_owner_handshake, probe_transfer_history_handshake, probe_internal_failure_isolation, probe_coverage_v15i, ingest_evidence_v15j
 from assessment_probe import probe_assessment_v15k, persist_assessment_v15l
 from derived_intelligence import profile_v15m, candidate_matrix_v15n, location_context_profile_v15p, candidate_research_cohorts_v15q, transfer_date_quality_guard_v15r, transfer_intelligence_foundation_v15s, seller_opportunity_research_framework_v15t, market_exposure_evidence_readiness_v15u, property_parcel_change_event_evidence_v15v, permit_building_change_source_readiness_v15w
+from evidence_memory import build_evidence_memory_v16a
 
 app = Flask(__name__)
 
 PAGE = """
 <!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>CEECEE Private Market Intelligence</title>
+<title>Private Market Intelligence</title>
 <style>
 body{font-family:Arial,sans-serif;max-width:920px;margin:40px auto;padding:0 18px;color:#171717}
 h1{font-size:28px;margin-bottom:4px}.sub{color:#666;margin-bottom:28px}
@@ -155,6 +156,15 @@ def westhampton_guarded_transfer_intelligence_v15s():
         return jsonify({"status":"degraded","version":"V15S","mode":"READ_ONLY_GUARDED_TRANSFER_INTELLIGENCE_FOUNDATION",
                         "error":str(exc),"database_writes":0,"seller_scoring_touched":False,
                         "opportunity_data_touched":False,"outreach_touched":False}), 200
+
+@app.get("/api/intelligence/evidence-memory-v16a")
+def evidence_memory_v16a():
+    try:
+        return jsonify(build_evidence_memory_v16a()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","version":"V16A","mode":"PERSISTENT_EVIDENCE_MEMORY_FOUNDATION",
+                        "error_type":type(e).__name__,"error":str(e)[:300],"watch_state_touched":False,
+                        "investigate_state_touched":False,"opportunity_state_touched":False,"outreach_touched":False}), 200
 
 @app.get("/api/westhampton-universe/permit-building-change-source-readiness-v15w")
 def westhampton_permit_building_change_source_readiness_v15w():
