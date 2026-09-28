@@ -10,6 +10,7 @@ from assessment_probe import probe_assessment_v15k, persist_assessment_v15l
 from derived_intelligence import profile_v15m, candidate_matrix_v15n, location_context_profile_v15p, candidate_research_cohorts_v15q, transfer_date_quality_guard_v15r, transfer_intelligence_foundation_v15s, seller_opportunity_research_framework_v15t, market_exposure_evidence_readiness_v15u, property_parcel_change_event_evidence_v15v, permit_building_change_source_readiness_v15w
 from evidence_memory import build_evidence_memory_v16a
 from change_detection import build_change_detection_v16b
+from opportunity_pathways import build_opportunity_pathways_v16c
 
 app = Flask(__name__)
 
@@ -175,6 +176,16 @@ def change_detection_v16b():
         return jsonify({"status":"degraded","version":"V16B","mode":"CHANGE_DETECTION_AGAINST_EVIDENCE_MEMORY",
                         "error_type":type(e).__name__,"error":str(e)[:300],"watch_state_touched":False,
                         "investigate_state_touched":False,"opportunity_state_touched":False,"outreach_touched":False}), 200
+
+@app.get("/api/intelligence/opportunity-pathways-v16c")
+def opportunity_pathways_v16c():
+    try:
+        return jsonify(build_opportunity_pathways_v16c()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","version":"V16C","mode":"FACTUAL_EVIDENCE_INTERPRETATION_AND_OPPORTUNITY_PATHWAYS",
+                        "error_type":type(e).__name__,"error":str(e)[:300],"seller_scoring":False,
+                        "watch_state_touched":False,"investigate_state_touched":False,"opportunity_state_touched":False,
+                        "outreach_touched":False,"contact_authorized":False}), 200
 
 @app.get("/api/westhampton-universe/permit-building-change-source-readiness-v15w")
 def westhampton_permit_building_change_source_readiness_v15w():
