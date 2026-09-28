@@ -1,0 +1,2 @@
+# V16E4b — Transfer observed_at Repair
+Protected baseline V16D. V16E4a reached transfer persistence and PostgreSQL exposed one exact constraint: transfers.observed_at is NOT NULL. Allowed change: populate observed_at with the UTC acquisition timestamp on new transfer observations. Ownership source_object_id repair from V16E4a is retained. Transaction remains atomic; any failure rolls back all inserts. No seller inference/scoring/contact/outreach.
