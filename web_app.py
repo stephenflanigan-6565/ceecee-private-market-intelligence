@@ -12,7 +12,7 @@ from evidence_memory import build_evidence_memory_v16a
 from change_detection import build_change_detection_v16b
 from opportunity_pathways import build_opportunity_pathways_v16c
 from investigation_queue import build_investigation_queue_v16d
-from live_evidence_refresh_v16e4 import refresh_suffolk_live_evidence_v16e4
+from live_evidence_refresh_v16e4a import refresh_suffolk_live_evidence_v16e4a
 
 app = Flask(__name__)
 
@@ -190,15 +190,14 @@ def opportunity_pathways_v16c():
                         "outreach_touched":False,"contact_authorized":False}), 200
 
 
-@app.get("/api/intelligence/live-evidence-refresh-v16e4")
-def live_evidence_refresh_v16e4():
+@app.get("/api/intelligence/live-evidence-refresh-v16e4a")
+def live_evidence_refresh_v16e4a():
     try:
-        return jsonify(refresh_suffolk_live_evidence_v16e4()), 200
+        return jsonify(refresh_suffolk_live_evidence_v16e4a()), 200
     except Exception as e:
-        return jsonify({"status":"degraded","version":"V16E4","mode":"SUFFOLK_LIVE_EVIDENCE_REFRESH",
-                        "error_type":type(e).__name__,"error":str(e)[:500],
-                        "seller_intent_inferred":False,"seller_scoring":False,
-                        "contact_authorized":False,"outreach_touched":False}), 200
+        return jsonify({"status":"degraded","version":"V16E4a","mode":"SUFFOLK_LIVE_EVIDENCE_REFRESH_SCHEMA_REPAIR",
+                        "error_type":type(e).__name__,"error":str(e)[:600],"contact_authorized":False,
+                        "outreach_touched":False,"seller_intent_inferred":False,"seller_scoring":False}), 200
 
 @app.get("/api/intelligence/investigation-queue-v16d")
 def investigation_queue_v16d():
