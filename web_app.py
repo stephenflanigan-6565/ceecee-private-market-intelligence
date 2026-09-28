@@ -9,6 +9,7 @@ from ownership_transfer_probe import probe_owner_only, probe_transfer_only, prob
 from assessment_probe import probe_assessment_v15k, persist_assessment_v15l
 from derived_intelligence import profile_v15m, candidate_matrix_v15n, location_context_profile_v15p, candidate_research_cohorts_v15q, transfer_date_quality_guard_v15r, transfer_intelligence_foundation_v15s, seller_opportunity_research_framework_v15t, market_exposure_evidence_readiness_v15u, property_parcel_change_event_evidence_v15v, permit_building_change_source_readiness_v15w
 from evidence_memory import build_evidence_memory_v16a
+from change_detection import build_change_detection_v16b
 
 app = Flask(__name__)
 
@@ -163,6 +164,15 @@ def evidence_memory_v16a():
         return jsonify(build_evidence_memory_v16a()), 200
     except Exception as e:
         return jsonify({"status":"degraded","version":"V16A","mode":"PERSISTENT_EVIDENCE_MEMORY_FOUNDATION",
+                        "error_type":type(e).__name__,"error":str(e)[:300],"watch_state_touched":False,
+                        "investigate_state_touched":False,"opportunity_state_touched":False,"outreach_touched":False}), 200
+
+@app.get("/api/intelligence/change-detection-v16b")
+def change_detection_v16b():
+    try:
+        return jsonify(build_change_detection_v16b()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","version":"V16B","mode":"CHANGE_DETECTION_AGAINST_EVIDENCE_MEMORY",
                         "error_type":type(e).__name__,"error":str(e)[:300],"watch_state_touched":False,
                         "investigate_state_touched":False,"opportunity_state_touched":False,"outreach_touched":False}), 200
 
