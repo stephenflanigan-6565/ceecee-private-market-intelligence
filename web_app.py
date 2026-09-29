@@ -12,6 +12,7 @@ from evidence_memory import build_evidence_memory_v16a
 from change_detection import build_change_detection_v16b
 from opportunity_pathways import build_opportunity_pathways_v16c
 from investigation_queue import build_investigation_queue_v16d
+from positive_detection_validation_v16f import run_positive_detection_validation_v16f
 from live_evidence_refresh_v16e4c import refresh_suffolk_live_evidence_v16e4b
 
 app = Flask(__name__)
@@ -194,6 +195,16 @@ def opportunity_pathways_v16c():
 def live_evidence_refresh_v16e4b():
     try:return jsonify(refresh_suffolk_live_evidence_v16e4b()), 200
     except Exception as e:return jsonify({"status":"degraded","version":"V16E4c","mode":"SUFFOLK_LIVE_EVIDENCE_REFRESH_TRANSFER_UNIQUE_KEY_REPAIR","error_type":type(e).__name__,"error":str(e)[:600],"contact_authorized":False,"outreach_touched":False,"seller_intent_inferred":False,"seller_scoring":False}), 200
+
+@app.get("/api/intelligence/positive-detection-validation-v16f")
+def positive_detection_validation_v16f():
+    try:
+        return jsonify(run_positive_detection_validation_v16f()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","version":"V16F","mode":"CONTROLLED_POSITIVE_DETECTION_VALIDATION",
+                        "error_type":type(e).__name__,"error":str(e)[:600],
+                        "database_writes":False,"contact_authorized":False,
+                        "outreach_touched":False,"seller_intent_inferred":False,"seller_scoring":False}), 200
 
 @app.get("/api/intelligence/investigation-queue-v16d")
 def investigation_queue_v16d():
