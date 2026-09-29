@@ -1,23 +1,21 @@
 #!/usr/bin/env python3
 """V16K — rough operations console. Read-only presentation over locked durable state."""
 from datetime import datetime, timezone
-from evidence_memory import _connect, _placeholder
+from db import connect, execute
 from investigation_inbox_v16j import build_investigation_inbox_v16j
 
 VERSION='V16K'
 MODE='READ_ONLY_OPERATIONS_CONSOLE'
 
 def build_operations_console_v16k():
-    conn=_connect()
+    conn=connect()
     try:
-        cur=conn.cursor()
         def scalar(sql):
-            cur.execute(sql)
-            row=cur.fetchone()
+            row=execute(conn, sql).fetchone()
             return int((row[0] if row else 0) or 0)
-        evidence=scalar('SELECT COUNT(*) FROM intelligence_evidence_ledger')
-        changes=scalar('SELECT COUNT(*) FROM intelligence_change_events')
-        states=scalar("SELECT COUNT(*) FROM property_investigation_state WHERE state='INVESTIGATE'")
+        evidence=scalar('SELECT COUNT(*) FROM evidence_ledger')
+        changes=scalar('SELECT COUNT(*) FROM evidence_change_events')
+        states=scalar("SELECT COUNT(*) FROM investigation_state WHERE market_code='WESTHAMPTON_BEACH_NY' AND state='INVESTIGATE'")
         inbox=build_investigation_inbox_v16j()
         return {
             'status':'ok','version':VERSION,'mode':MODE,
