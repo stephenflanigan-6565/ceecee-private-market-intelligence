@@ -17,6 +17,7 @@ from automated_pipeline_v16g import run_guarded_pipeline_v16g
 from attention_delivery_v16h import build_attention_delivery_v16h
 from live_evidence_refresh_v16e4c import refresh_suffolk_live_evidence_v16e4b
 from investigation_inbox_v16j import build_investigation_inbox_v16j
+from investigation_inbox_page_v16j1 import build_investigation_inbox_html_v16j1
 
 app = Flask(__name__)
 
@@ -252,9 +253,11 @@ def investigation_inbox_v16j_api():
 def investigation_inbox_v16j_page():
     try:
         data=build_investigation_inbox_v16j()
+        return build_investigation_inbox_html_v16j1(data), 200, {"Content-Type":"text/html; charset=utf-8"}
     except Exception as e:
-        data={"generated_at":"unavailable","investigate_count":0,"items":[],"status":"degraded"}
-    return render_template_string(INBOX_PAGE,data=data)
+        body=("<!doctype html><html><body><h1>Investigation Inbox</h1>"
+              "<p>The inbox could not be rendered.</p><p>Read-only route; no data was changed.</p></body></html>")
+        return body, 500, {"Content-Type":"text/html; charset=utf-8"}
 
 @app.get("/api/intelligence/investigation-queue-v16d")
 def investigation_queue_v16d():
