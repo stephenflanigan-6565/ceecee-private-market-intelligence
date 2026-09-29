@@ -16,6 +16,7 @@ from positive_detection_validation_v16f import run_positive_detection_validation
 from automated_pipeline_v16g import run_guarded_pipeline_v16g
 from attention_delivery_v16h import build_attention_delivery_v16h
 from live_evidence_refresh_v16e4c import refresh_suffolk_live_evidence_v16e4b
+from investigation_inbox_v16j import build_investigation_inbox_v16j
 
 app = Flask(__name__)
 
@@ -32,7 +33,7 @@ h1{font-size:28px;margin-bottom:4px}.sub{color:#666;margin-bottom:28px}
 small{color:#666}
 </style></head>
 <body>
-<h1>CEECEE PRIVATE MARKET INTELLIGENCE</h1>
+<h1>PRIVATE MARKET INTELLIGENCE</h1>
 <div class="sub">Westhampton Beach Seller Opportunity Engine</div>
 <div class="grid">
 {% for key,val in data.opportunities.items() %}
@@ -226,6 +227,34 @@ def positive_detection_validation_v16f():
                         "error_type":type(e).__name__,"error":str(e)[:600],
                         "database_writes":False,"contact_authorized":False,
                         "outreach_touched":False,"seller_intent_inferred":False,"seller_scoring":False}), 200
+
+
+INBOX_PAGE = """
+<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Investigation Inbox</title><style>
+body{font-family:Arial,sans-serif;max-width:980px;margin:36px auto;padding:0 18px;color:#171717}h1{margin-bottom:4px}.sub{color:#666;margin-bottom:24px}.empty,.item{border:1px solid #ddd;border-radius:12px;padding:18px;margin:12px 0}.tag{font-weight:700}.meta{color:#666;font-size:13px;margin-top:8px}.trigger{margin-top:12px;padding:10px;background:#f5f5f5;border-radius:8px}a{color:inherit}
+</style></head><body><h1>Investigation Inbox</h1><div class="sub">Westhampton Beach · durable INVESTIGATE state · read only</div>
+{% if data.investigate_count == 0 %}<div class="empty"><b>No properties require investigation.</b><br><span class="meta">The machine is quiet because no post-baseline operational change is currently in INVESTIGATE.</span></div>{% endif %}
+{% for item in data.items %}<div class="item"><div class="tag">INVESTIGATE · Parcel {{ item.parcel_id }}</div><div class="meta">First entered: {{ item.first_entered_at }} · Triggers: {{ item.trigger_count }} · Contact authorized: NO</div>{% for t in item.why_investigate.operational_triggers %}<div class="trigger"><b>{{ t.change_type }}</b> · {{ t.evidence_family }} / {{ t.evidence_type }}<br><span class="meta">Source: {{ t.source }} · Detected: {{ t.detected_at }}</span></div>{% endfor %}</div>{% endfor %}
+<div class="meta">Generated {{ data.generated_at }} · This screen does not infer seller intent or authorize outreach.</div></body></html>
+"""
+
+@app.get("/api/intelligence/investigation-inbox-v16j")
+def investigation_inbox_v16j_api():
+    try:
+        return jsonify(build_investigation_inbox_v16j()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","version":"V16J","mode":"READ_ONLY_INVESTIGATION_INBOX",
+                        "error_type":type(e).__name__,"error":str(e)[:400],"database_writes":False,
+                        "contact_authorized":False,"outreach_touched":False,"seller_intent_inferred":False}), 200
+
+@app.get("/investigations")
+def investigation_inbox_v16j_page():
+    try:
+        data=build_investigation_inbox_v16j()
+    except Exception as e:
+        data={"generated_at":"unavailable","investigate_count":0,"items":[],"status":"degraded"}
+    return render_template_string(INBOX_PAGE,data=data)
 
 @app.get("/api/intelligence/investigation-queue-v16d")
 def investigation_queue_v16d():
