@@ -19,6 +19,7 @@ from live_evidence_refresh_v16e4c import refresh_suffolk_live_evidence_v16e4b
 from investigation_inbox_v16j import build_investigation_inbox_v16j
 from investigation_inbox_page_v16j1 import build_investigation_inbox_html_v16j1
 from operations_console_v16k import build_operations_console_v16k, render_operations_console_v16k
+from title_transfer_event_intelligence_v16l import build_title_transfer_event_intelligence_v16l
 
 app = Flask(__name__)
 
@@ -241,6 +242,13 @@ body{font-family:Arial,sans-serif;max-width:980px;margin:36px auto;padding:0 18p
 <div class="meta">Generated {{ data.generated_at }} · This screen does not infer seller intent or authorize outreach.</div></body></html>
 """
 
+
+@app.get("/api/intelligence/title-transfer-event-intelligence-v16l")
+def title_transfer_event_intelligence_v16l_api():
+    try:
+        return jsonify(build_title_transfer_event_intelligence_v16l()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V16L1","error":str(e)}), 500
 
 @app.get("/api/intelligence/operations-console-v16k")
 def operations_console_v16k_api():
