@@ -14,6 +14,7 @@ from opportunity_pathways import build_opportunity_pathways_v16c
 from investigation_queue import build_investigation_queue_v16d
 from positive_detection_validation_v16f import run_positive_detection_validation_v16f
 from automated_pipeline_v16g import run_guarded_pipeline_v16g
+from attention_delivery_v16h import build_attention_delivery_v16h
 from live_evidence_refresh_v16e4c import refresh_suffolk_live_evidence_v16e4b
 
 app = Flask(__name__)
@@ -196,6 +197,16 @@ def opportunity_pathways_v16c():
 def live_evidence_refresh_v16e4b():
     try:return jsonify(refresh_suffolk_live_evidence_v16e4b()), 200
     except Exception as e:return jsonify({"status":"degraded","version":"V16E4c","mode":"SUFFOLK_LIVE_EVIDENCE_REFRESH_TRANSFER_UNIQUE_KEY_REPAIR","error_type":type(e).__name__,"error":str(e)[:600],"contact_authorized":False,"outreach_touched":False,"seller_intent_inferred":False,"seller_scoring":False}), 200
+
+@app.get("/api/intelligence/attention-delivery-v16h")
+def attention_delivery_v16h():
+    try:
+        return jsonify(build_attention_delivery_v16h()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","version":"V16H","mode":"ATTENTION_ONLY_DELIVERY_PAYLOAD",
+                        "error_type":type(e).__name__,"error":str(e)[:600],"external_message_sent":False,
+                        "contact_authorized":False,"outreach_touched":False,
+                        "seller_intent_inferred":False,"seller_scoring":False}), 200
 
 @app.get("/api/intelligence/automated-pipeline-v16g")
 def automated_pipeline_v16g():
