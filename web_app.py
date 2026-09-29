@@ -18,6 +18,7 @@ from attention_delivery_v16h import build_attention_delivery_v16h
 from live_evidence_refresh_v16e4c import refresh_suffolk_live_evidence_v16e4b
 from investigation_inbox_v16j import build_investigation_inbox_v16j
 from investigation_inbox_page_v16j1 import build_investigation_inbox_html_v16j1
+from operations_console_v16k import build_operations_console_v16k, render_operations_console_v16k
 
 app = Flask(__name__)
 
@@ -239,6 +240,22 @@ body{font-family:Arial,sans-serif;max-width:980px;margin:36px auto;padding:0 18p
 {% for item in data.items %}<div class="item"><div class="tag">INVESTIGATE · Parcel {{ item.parcel_id }}</div><div class="meta">First entered: {{ item.first_entered_at }} · Triggers: {{ item.trigger_count }} · Contact authorized: NO</div>{% for t in item.why_investigate.operational_triggers %}<div class="trigger"><b>{{ t.change_type }}</b> · {{ t.evidence_family }} / {{ t.evidence_type }}<br><span class="meta">Source: {{ t.source }} · Detected: {{ t.detected_at }}</span></div>{% endfor %}</div>{% endfor %}
 <div class="meta">Generated {{ data.generated_at }} · This screen does not infer seller intent or authorize outreach.</div></body></html>
 """
+
+
+@app.get("/api/intelligence/operations-console-v16k")
+def operations_console_v16k_api():
+    try:
+        return jsonify(build_operations_console_v16k()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V16K","mode":"READ_ONLY_OPERATIONS_CONSOLE","error_type":type(e).__name__,"error":str(e)[:200],"guards":{"database_writes":False,"external_message_sent":False,"outreach_touched":False}}), 200
+
+@app.get("/operations")
+def operations_console_v16k_page():
+    try:
+        data=build_operations_console_v16k()
+        return render_operations_console_v16k(data), 200, {"Content-Type":"text/html; charset=utf-8"}
+    except Exception as e:
+        return f"Operations console unavailable: {type(e).__name__}", 500, {"Content-Type":"text/plain; charset=utf-8"}
 
 @app.get("/api/intelligence/investigation-inbox-v16j")
 def investigation_inbox_v16j_api():
