@@ -23,6 +23,7 @@ from title_transfer_event_intelligence_v16l import build_title_transfer_event_in
 from title_transfer_authority_v16m import build_title_transfer_authority_v16m
 from title_transfer_sequence_v16n import build_title_transfer_sequence_v16n
 from current_event_attention_v16o import build_current_event_attention_v16o
+from multi_evidence_candidate_context_v16p import build_multi_evidence_candidate_context_v16p
 
 app = Flask(__name__)
 
@@ -454,3 +455,7 @@ def title_transfer_sequence_v16n_route():
 @app.get("/api/intelligence/current-event-attention-v16o")
 def current_event_attention_v16o_route():
     return jsonify(build_current_event_attention_v16o())
+
+@app.get("/api/intelligence/multi-evidence-candidate-context-v16p")
+def multi_evidence_candidate_context_v16p_route():
+    return jsonify(build_multi_evidence_candidate_context_v16p())
