@@ -24,6 +24,7 @@ from title_transfer_authority_v16m import build_title_transfer_authority_v16m
 from title_transfer_sequence_v16n import build_title_transfer_sequence_v16n
 from current_event_attention_v16o import build_current_event_attention_v16o
 from multi_evidence_candidate_context_v16p import build_multi_evidence_candidate_context_v16p
+from deeper_research_queue_v16q import build_deeper_research_queue_v16q
 
 app = Flask(__name__)
 
@@ -459,3 +460,8 @@ def current_event_attention_v16o_route():
 @app.get("/api/intelligence/multi-evidence-candidate-context-v16p")
 def multi_evidence_candidate_context_v16p_route():
     return jsonify(build_multi_evidence_candidate_context_v16p())
+
+
+@app.get("/api/intelligence/deeper-research-queue-v16q")
+def deeper_research_queue_v16q_route():
+    return jsonify(build_deeper_research_queue_v16q())
