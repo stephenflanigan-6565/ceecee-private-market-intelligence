@@ -26,6 +26,7 @@ from current_event_attention_v16o import build_current_event_attention_v16o
 from multi_evidence_candidate_context_v16p import build_multi_evidence_candidate_context_v16p
 from deeper_research_queue_v16q import build_deeper_research_queue_v16q
 from factual_research_resolution_v16r import build_factual_research_resolution_v16r
+from temporal_relevance_cleanup_v16s import build_temporal_relevance_cleanup_v16s
 
 app = Flask(__name__)
 
@@ -474,6 +475,18 @@ def factual_research_resolution_v16r_route():
         return jsonify(build_factual_research_resolution_v16r()), 200
     except Exception as e:
         return jsonify({"status":"degraded","version":"V16R","mode":"READ_ONLY_FACTUAL_DEEPER_RESEARCH_RESOLUTION",
+                        "error_type":type(e).__name__,"error":str(e)[:600],
+                        "database_writes":False,"investigate_state_touched":False,
+                        "contact_authorized":False,"outreach_touched":False,
+                        "seller_intent_inferred":False,"seller_scoring":False}), 200
+
+
+@app.get("/api/intelligence/temporal-relevance-cleanup-v16s")
+def temporal_relevance_cleanup_v16s_route():
+    try:
+        return jsonify(build_temporal_relevance_cleanup_v16s()), 200
+    except Exception as e:
+        return jsonify({"status":"degraded","version":"V16S","mode":"READ_ONLY_TEMPORAL_RELEVANCE_CLEANUP",
                         "error_type":type(e).__name__,"error":str(e)[:600],
                         "database_writes":False,"investigate_state_touched":False,
                         "contact_authorized":False,"outreach_touched":False,
