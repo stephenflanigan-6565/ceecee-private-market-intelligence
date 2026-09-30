@@ -20,6 +20,7 @@ from investigation_inbox_v16j import build_investigation_inbox_v16j
 from investigation_inbox_page_v16j1 import build_investigation_inbox_html_v16j1
 from operations_console_v16k import build_operations_console_v16k, render_operations_console_v16k
 from title_transfer_event_intelligence_v16l import build_title_transfer_event_intelligence_v16l
+from title_transfer_authority_v16m import build_title_transfer_authority_v16m
 
 app = Flask(__name__)
 
@@ -438,3 +439,8 @@ def home():
               "opportunities":{"IGNORE":0,"WATCH":0,"INVESTIGATE":0,"LATENT":0,"ACTIVE":0},
               "contact_eligible":0,"failures_24h":0}
     return render_template_string(PAGE,data=data)
+
+
+@app.get("/api/intelligence/title-transfer-authority-v16m")
+def title_transfer_authority_v16m_route():
+    return jsonify(build_title_transfer_authority_v16m())
