@@ -22,6 +22,7 @@ from operations_console_v16k import build_operations_console_v16k, render_operat
 from title_transfer_event_intelligence_v16l import build_title_transfer_event_intelligence_v16l
 from title_transfer_authority_v16m import build_title_transfer_authority_v16m
 from title_transfer_sequence_v16n import build_title_transfer_sequence_v16n
+from current_event_attention_v16o import build_current_event_attention_v16o
 
 app = Flask(__name__)
 
@@ -449,3 +450,7 @@ def title_transfer_authority_v16m_route():
 @app.get("/api/intelligence/title-transfer-sequence-v16n")
 def title_transfer_sequence_v16n_route():
     return jsonify(build_title_transfer_sequence_v16n())
+
+@app.get("/api/intelligence/current-event-attention-v16o")
+def current_event_attention_v16o_route():
+    return jsonify(build_current_event_attention_v16o())
