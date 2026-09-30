@@ -21,6 +21,7 @@ from investigation_inbox_page_v16j1 import build_investigation_inbox_html_v16j1
 from operations_console_v16k import build_operations_console_v16k, render_operations_console_v16k
 from title_transfer_event_intelligence_v16l import build_title_transfer_event_intelligence_v16l
 from title_transfer_authority_v16m import build_title_transfer_authority_v16m
+from title_transfer_sequence_v16n import build_title_transfer_sequence_v16n
 
 app = Flask(__name__)
 
@@ -444,3 +445,7 @@ def home():
 @app.get("/api/intelligence/title-transfer-authority-v16m")
 def title_transfer_authority_v16m_route():
     return jsonify(build_title_transfer_authority_v16m())
+
+@app.get("/api/intelligence/title-transfer-sequence-v16n")
+def title_transfer_sequence_v16n_route():
+    return jsonify(build_title_transfer_sequence_v16n())
