@@ -58,7 +58,7 @@ def _fingerprint(payload):
 
 
 def _prior(events, recent_event, family):
-    eligible=[e for e in events if e['event_date'] < recent_event['event_date'] and e['family']==family]
+    eligible=[e for e in events if e['event_date'] < recent_event['event_date'] and e['event_family']==family]
     return eligible[-1] if eligible else None
 
 
