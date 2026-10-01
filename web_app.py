@@ -37,6 +37,7 @@ from targeted_source_detail_enrichment_v16z import build_targeted_source_detail_
 from suffolk_clerk_retrieval_adapter_v17a import build_suffolk_clerk_retrieval_adapter_contract_v17a
 from suffolk_county_transfer_history_v17b import build_suffolk_county_transfer_history_retrieval_v17b
 from evidence_resolution_date_semantics_v17c import build_evidence_resolution_date_semantics_v17c
+from authoritative_research_evidence_memory_v17d import build_authoritative_research_evidence_memory_v17d
 
 app = Flask(__name__)
 
@@ -612,3 +613,14 @@ def evidence_resolution_date_semantics_v17c_route():
                                   "source_history_silently_corrected":False,
                                   "contact_authorized":False,
                                   "seller_intent_inferred":False}}), 200
+
+
+@app.get("/api/intelligence/authoritative-research-evidence-memory-v17d")
+def authoritative_research_evidence_memory_v17d_route():
+    try:
+        return jsonify(build_authoritative_research_evidence_memory_v17d()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17D","mode":"PERSISTENT_AUTHORITATIVE_RESEARCH_EVIDENCE_MEMORY",
+                        "error_type":type(e).__name__,"error":str(e)[:400],
+                        "guards":{"v16a_evidence_ledger_modified":False,"investigate_state_touched":False,
+                                  "contact_authorized":False,"seller_intent_inferred":False}}), 200
