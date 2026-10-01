@@ -33,6 +33,7 @@ from investigate_state_transition_v16v import build_investigate_state_transition
 from operational_investigation_packets_v16w import build_operational_investigation_packets_v16w
 from investigation_analyst_brief_v16x import build_investigation_analyst_brief_v16x
 from research_question_triage_v16y import build_research_question_triage_v16y
+from targeted_source_detail_enrichment_v16z import build_targeted_source_detail_enrichment_plan_v16z
 
 app = Flask(__name__)
 
@@ -561,3 +562,15 @@ def research_question_triage_v16y_route():
                         "error_type":type(e).__name__,"error":str(e)[:400],
                         "guards":{"database_writes":False,"investigate_state_touched":False,
                                   "contact_authorized":False,"outreach_touched":False}}), 200
+
+
+@app.get("/api/intelligence/targeted-source-detail-enrichment-v16z")
+def targeted_source_detail_enrichment_v16z_route():
+    try:
+        return jsonify(build_targeted_source_detail_enrichment_plan_v16z()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V16Z",
+                        "mode":"READ_ONLY_TARGETED_SOURCE_DETAIL_ENRICHMENT_PLAN",
+                        "error_type":type(e).__name__,"error":str(e)[:400],
+                        "guards":{"database_writes":False,"contact_authorized":False,
+                                  "seller_intent_inferred":False,"external_retrieval_performed":False}}), 200
