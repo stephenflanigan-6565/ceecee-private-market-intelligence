@@ -27,6 +27,7 @@ from multi_evidence_candidate_context_v16p import build_multi_evidence_candidate
 from deeper_research_queue_v16q import build_deeper_research_queue_v16q
 from factual_research_resolution_v16r import build_factual_research_resolution_v16r
 from temporal_relevance_cleanup_v16s import build_temporal_relevance_cleanup_v16s
+from explainable_investigation_basis_v16t import build_explainable_investigation_basis_v16t
 
 app = Flask(__name__)
 
@@ -491,3 +492,11 @@ def temporal_relevance_cleanup_v16s_route():
                         "database_writes":False,"investigate_state_touched":False,
                         "contact_authorized":False,"outreach_touched":False,
                         "seller_intent_inferred":False,"seller_scoring":False}), 200
+
+
+@app.get("/api/intelligence/explainable-investigation-basis-v16t")
+def explainable_investigation_basis_v16t_route():
+    try:
+        return jsonify(build_explainable_investigation_basis_v16t()), 200
+    except Exception as exc:
+        return jsonify({"status": "failed", "version": "V16T", "error": str(exc)}), 500
