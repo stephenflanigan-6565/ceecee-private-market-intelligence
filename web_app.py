@@ -36,6 +36,7 @@ from research_question_triage_v16y import build_research_question_triage_v16y
 from targeted_source_detail_enrichment_v16z import build_targeted_source_detail_enrichment_plan_v16z
 from suffolk_clerk_retrieval_adapter_v17a import build_suffolk_clerk_retrieval_adapter_contract_v17a
 from suffolk_county_transfer_history_v17b import build_suffolk_county_transfer_history_retrieval_v17b
+from evidence_resolution_date_semantics_v17c import build_evidence_resolution_date_semantics_v17c
 
 app = Flask(__name__)
 
@@ -596,3 +597,18 @@ def suffolk_county_transfer_history_v17b_route():
                         "error_type":type(e).__name__,"error":str(e)[:400],
                         "guards":{"database_writes":False,"clerk_kiosk_scraped":False,
                                   "contact_authorized":False,"seller_intent_inferred":False}}), 200
+
+
+@app.get("/api/intelligence/evidence-resolution-date-semantics-v17c")
+def evidence_resolution_date_semantics_v17c_route():
+    try:
+        return jsonify(build_evidence_resolution_date_semantics_v17c()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17C",
+                        "mode":"READ_ONLY_EVIDENCE_RESOLUTION_AND_DATE_SEMANTICS",
+                        "error_type":type(e).__name__,"error":str(e)[:400],
+                        "guards":{"database_writes":False,
+                                  "recorddate_fabricated_from_entrydate":False,
+                                  "source_history_silently_corrected":False,
+                                  "contact_authorized":False,
+                                  "seller_intent_inferred":False}}), 200
