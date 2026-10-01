@@ -28,6 +28,7 @@ from deeper_research_queue_v16q import build_deeper_research_queue_v16q
 from factual_research_resolution_v16r import build_factual_research_resolution_v16r
 from temporal_relevance_cleanup_v16s import build_temporal_relevance_cleanup_v16s
 from explainable_investigation_basis_v16t import build_explainable_investigation_basis_v16t
+from investigate_promotion_governance_v16u import build_investigate_promotion_governance_v16u
 
 app = Flask(__name__)
 
@@ -500,3 +501,11 @@ def explainable_investigation_basis_v16t_route():
         return jsonify(build_explainable_investigation_basis_v16t()), 200
     except Exception as exc:
         return jsonify({"status": "failed", "version": "V16T", "error": str(exc)}), 500
+
+
+@app.get("/api/intelligence/investigate-promotion-governance-v16u")
+def investigate_promotion_governance_v16u_route():
+    try:
+        return jsonify(build_investigate_promotion_governance_v16u()), 200
+    except Exception as exc:
+        return jsonify({"status": "failed", "version": "V16U", "error": str(exc)}), 500
