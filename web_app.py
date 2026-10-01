@@ -29,6 +29,7 @@ from factual_research_resolution_v16r import build_factual_research_resolution_v
 from temporal_relevance_cleanup_v16s import build_temporal_relevance_cleanup_v16s
 from explainable_investigation_basis_v16t import build_explainable_investigation_basis_v16t
 from investigate_promotion_governance_v16u import build_investigate_promotion_governance_v16u
+from investigate_state_transition_v16v import build_investigate_state_transition_v16v
 
 app = Flask(__name__)
 
@@ -509,3 +510,14 @@ def investigate_promotion_governance_v16u_route():
         return jsonify(build_investigate_promotion_governance_v16u()), 200
     except Exception as exc:
         return jsonify({"status": "failed", "version": "V16U", "error": str(exc)}), 500
+
+
+@app.get("/api/intelligence/investigate-state-transition-v16v")
+def investigate_state_transition_v16v_route():
+    try:
+        return jsonify(build_investigate_state_transition_v16v()), 200
+    except Exception as exc:
+        return jsonify({"status": "failed", "version": "V16V", "mode": "CONTROLLED_OPERATIONAL_INVESTIGATE_STATE_TRANSITION",
+                        "error_type": type(exc).__name__, "error": str(exc)[:300],
+                        "contact_authorized": False, "seller_intent_inferred": False,
+                        "seller_scoring": False, "outreach_touched": False}), 200
