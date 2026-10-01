@@ -31,6 +31,7 @@ from explainable_investigation_basis_v16t import build_explainable_investigation
 from investigate_promotion_governance_v16u import build_investigate_promotion_governance_v16u
 from investigate_state_transition_v16v import build_investigate_state_transition_v16v
 from operational_investigation_packets_v16w import build_operational_investigation_packets_v16w
+from investigation_analyst_brief_v16x import build_investigation_analyst_brief_v16x
 
 app = Flask(__name__)
 
@@ -535,3 +536,15 @@ def operational_investigation_packets_v16w_route():
                         "guards":{"database_writes":False,"investigate_state_touched":False,
                                   "contact_authorized":False,"outreach_touched":False}}), 200
 
+
+
+@app.get("/api/intelligence/investigation-analyst-brief-v16x")
+def investigation_analyst_brief_v16x_route():
+    try:
+        return jsonify(build_investigation_analyst_brief_v16x()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V16X",
+                        "mode":"READ_ONLY_INVESTIGATION_ANALYST_BRIEF",
+                        "error_type":type(e).__name__,"error":str(e)[:400],
+                        "guards":{"database_writes":False,"investigate_state_touched":False,
+                                  "contact_authorized":False,"outreach_touched":False}}), 200
