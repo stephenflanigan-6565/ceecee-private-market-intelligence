@@ -35,6 +35,7 @@ from investigation_analyst_brief_v16x import build_investigation_analyst_brief_v
 from research_question_triage_v16y import build_research_question_triage_v16y
 from targeted_source_detail_enrichment_v16z import build_targeted_source_detail_enrichment_plan_v16z
 from suffolk_clerk_retrieval_adapter_v17a import build_suffolk_clerk_retrieval_adapter_contract_v17a
+from suffolk_county_transfer_history_v17b import build_suffolk_county_transfer_history_retrieval_v17b
 
 app = Flask(__name__)
 
@@ -582,3 +583,16 @@ def suffolk_clerk_retrieval_adapter_v17a_route():
         return jsonify(build_suffolk_clerk_retrieval_adapter_contract_v17a()), 200
     except Exception as e:
         return jsonify({"status":"error","version":"V17A","error_type":type(e).__name__,"error":str(e)[:400]}), 200
+
+
+@app.get("/api/intelligence/suffolk-county-transfer-history-v17b")
+def suffolk_county_transfer_history_v17b_route():
+    try:
+        payload = build_suffolk_county_transfer_history_retrieval_v17b()
+        return jsonify(payload), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17B",
+                        "mode":"READ_ONLY_SUFFOLK_COUNTY_GIS_TRANSFER_HISTORY_RETRIEVAL",
+                        "error_type":type(e).__name__,"error":str(e)[:400],
+                        "guards":{"database_writes":False,"clerk_kiosk_scraped":False,
+                                  "contact_authorized":False,"seller_intent_inferred":False}}), 200
