@@ -30,6 +30,7 @@ from temporal_relevance_cleanup_v16s import build_temporal_relevance_cleanup_v16
 from explainable_investigation_basis_v16t import build_explainable_investigation_basis_v16t
 from investigate_promotion_governance_v16u import build_investigate_promotion_governance_v16u
 from investigate_state_transition_v16v import build_investigate_state_transition_v16v
+from operational_investigation_packets_v16w import build_operational_investigation_packets_v16w
 
 app = Flask(__name__)
 
@@ -521,3 +522,16 @@ def investigate_state_transition_v16v_route():
                         "error_type": type(exc).__name__, "error": str(exc)[:300],
                         "contact_authorized": False, "seller_intent_inferred": False,
                         "seller_scoring": False, "outreach_touched": False}), 200
+
+
+@app.get("/api/intelligence/operational-investigation-packets-v16w")
+def operational_investigation_packets_v16w_route():
+    try:
+        return jsonify(build_operational_investigation_packets_v16w()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V16W",
+                        "mode":"READ_ONLY_OPERATIONAL_INVESTIGATION_PACKET_ASSEMBLY",
+                        "error_type":type(e).__name__,"error":str(e)[:400],
+                        "guards":{"database_writes":False,"investigate_state_touched":False,
+                                  "contact_authorized":False,"outreach_touched":False}}), 200
+
