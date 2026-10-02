@@ -705,3 +705,16 @@ def verified_evidence_persistence_v17i_route():
             "error_type":type(e).__name__,"error":str(e)[:1200],
             "guards":{"investigate_state_touched":False,"contact_authorized":False,
                       "seller_intent_inferred":False}}), 200
+
+
+@app.get("/api/intelligence/operational-verified-evidence-intake-v17j")
+def operational_verified_evidence_intake_v17j_route():
+    try:
+        from operational_verified_evidence_intake_v17j import build_operational_verified_evidence_intake_v17j
+        return jsonify(build_operational_verified_evidence_intake_v17j()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17J",
+            "mode":"OPERATIONAL_VERIFIED_EVIDENCE_INTAKE_READINESS",
+            "error_type":type(e).__name__,"error":str(e)[:1200],
+            "guards":{"database_writes":False,"investigate_state_touched":False,
+                      "contact_authorized":False,"seller_intent_inferred":False}}), 200
