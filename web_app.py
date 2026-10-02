@@ -718,3 +718,16 @@ def operational_verified_evidence_intake_v17j_route():
             "error_type":type(e).__name__,"error":str(e)[:1200],
             "guards":{"database_writes":False,"investigate_state_touched":False,
                       "contact_authorized":False,"seller_intent_inferred":False}}), 200
+
+
+@app.get("/api/intelligence/verification-work-queue-v17k")
+def verification_work_queue_v17k_route():
+    try:
+        from verification_work_queue_v17k import build_verification_work_queue_v17k
+        return jsonify(build_verification_work_queue_v17k()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17K",
+            "mode":"VERIFICATION_WORK_QUEUE_RETURN_CAPTURE_CONTRACT",
+            "error_type":type(e).__name__,"error":str(e)[:1200],
+            "guards":{"database_writes":False,"investigate_state_touched":False,
+                      "contact_authorized":False,"seller_intent_inferred":False}}), 200
