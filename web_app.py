@@ -731,3 +731,17 @@ def verification_work_queue_v17k_route():
             "error_type":type(e).__name__,"error":str(e)[:1200],
             "guards":{"database_writes":False,"investigate_state_touched":False,
                       "contact_authorized":False,"seller_intent_inferred":False}}), 200
+
+
+@app.get("/api/intelligence/full-universe-reevaluation-readiness-v17l")
+def full_universe_reevaluation_readiness_v17l_route():
+    try:
+        from full_universe_reevaluation_readiness_v17l import build_full_universe_reevaluation_readiness_v17l
+        return jsonify(build_full_universe_reevaluation_readiness_v17l()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17L",
+            "mode":"FULL_UNIVERSE_REEVALUATION_READINESS_READ_ONLY",
+            "error_type":type(e).__name__,"error":str(e)[:1200],
+            "guards":{"database_writes":False,"change_rescan_executed":False,
+                      "investigate_state_touched":False,"contact_authorized":False,
+                      "seller_intent_inferred":False}}), 200
