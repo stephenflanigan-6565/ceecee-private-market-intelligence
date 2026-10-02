@@ -638,3 +638,16 @@ def v17e2_route_probe():
         "database_writes": False,
         "message": "Route registration is alive. No V17E re-evaluation logic executed."
     }), 200
+
+
+@app.get("/api/intelligence/persistent-evidence-reevaluation-v17e3")
+def persistent_evidence_reevaluation_v17e3_route():
+    try:
+        from persistent_evidence_reevaluation_v17e3 import build_persistent_evidence_reevaluation_v17e3
+        return jsonify(build_persistent_evidence_reevaluation_v17e3()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17E3",
+            "mode":"PERSISTENT_EVIDENCE_REEVALUATION_CONTAINED",
+            "error_type":type(e).__name__,"error":str(e)[:1200],
+            "guards":{"database_writes":False,"investigate_state_touched":False,
+                "contact_authorized":False,"seller_intent_inferred":False}}), 200
