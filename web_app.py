@@ -38,6 +38,7 @@ from suffolk_clerk_retrieval_adapter_v17a import build_suffolk_clerk_retrieval_a
 from suffolk_county_transfer_history_v17b import build_suffolk_county_transfer_history_retrieval_v17b
 from evidence_resolution_date_semantics_v17c import build_evidence_resolution_date_semantics_v17c
 from authoritative_research_evidence_memory_v17d import build_authoritative_research_evidence_memory_v17d
+from persistent_evidence_reevaluation_v17e import build_persistent_evidence_reevaluation_v17e
 
 app = Flask(__name__)
 
@@ -623,4 +624,15 @@ def authoritative_research_evidence_memory_v17d_route():
         return jsonify({"status":"error","version":"V17D","mode":"PERSISTENT_AUTHORITATIVE_RESEARCH_EVIDENCE_MEMORY",
                         "error_type":type(e).__name__,"error":str(e)[:400],
                         "guards":{"v16a_evidence_ledger_modified":False,"investigate_state_touched":False,
+                                  "contact_authorized":False,"seller_intent_inferred":False}}), 200
+
+
+@app.get("/api/intelligence/persistent-evidence-reevaluation-v17e")
+def persistent_evidence_reevaluation_v17e_route():
+    try:
+        return jsonify(build_persistent_evidence_reevaluation_v17e()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17E","mode":"PERSISTENT_EVIDENCE_REEVALUATION",
+                        "error_type":type(e).__name__,"error":str(e)[:400],
+                        "guards":{"database_writes":False,"investigate_state_touched":False,
                                   "contact_authorized":False,"seller_intent_inferred":False}}), 200
