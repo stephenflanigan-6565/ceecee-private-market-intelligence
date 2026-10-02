@@ -679,3 +679,16 @@ def manual_verification_packet_v17g_route():
                       "investigate_state_touched":False,"contact_authorized":False,
                       "seller_intent_inferred":False}
         }), 200
+
+
+@app.get("/api/intelligence/verified-evidence-intake-gate-v17h")
+def verified_evidence_intake_gate_v17h_route():
+    try:
+        from verified_evidence_intake_gate_v17h import build_verified_evidence_intake_gate_v17h
+        return jsonify(build_verified_evidence_intake_gate_v17h()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17H",
+            "mode":"VERIFIED_EVIDENCE_INTAKE_VALIDATION_GATE",
+            "error_type":type(e).__name__,"error":str(e)[:1200],
+            "guards":{"database_writes":False,"investigate_state_touched":False,
+                      "contact_authorized":False,"seller_intent_inferred":False}}), 200

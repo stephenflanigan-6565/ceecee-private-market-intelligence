@@ -1,0 +1,1 @@
+V17H validates controlled evidence-return cases only. No persistence authority or database writes.
