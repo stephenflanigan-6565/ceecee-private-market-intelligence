@@ -651,3 +651,15 @@ def persistent_evidence_reevaluation_v17e3_route():
             "error_type":type(e).__name__,"error":str(e)[:1200],
             "guards":{"database_writes":False,"investigate_state_touched":False,
                 "contact_authorized":False,"seller_intent_inferred":False}}), 200
+
+@app.get('/api/intelligence/unresolved-research-router-v17f')
+def unresolved_research_router_v17f_route():
+    try:
+        from unresolved_research_router_v17f import build_unresolved_research_router_v17f
+        return jsonify(build_unresolved_research_router_v17f()), 200
+    except Exception as e:
+        return jsonify({'status':'error','version':'V17F','mode':'UNRESOLVED_FACTUAL_RESEARCH_ROUTER_READ_ONLY',
+                        'error_type':type(e).__name__,'error':str(e)[:1200],
+                        'guards':{'database_writes':False,'external_retrieval_performed':False,
+                                  'investigate_state_touched':False,'contact_authorized':False,
+                                  'seller_intent_inferred':False}}), 200
