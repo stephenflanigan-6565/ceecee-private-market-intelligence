@@ -663,3 +663,19 @@ def unresolved_research_router_v17f_route():
                         'guards':{'database_writes':False,'external_retrieval_performed':False,
                                   'investigate_state_touched':False,'contact_authorized':False,
                                   'seller_intent_inferred':False}}), 200
+
+
+@app.get("/api/intelligence/manual-verification-packet-v17g")
+def manual_verification_packet_v17g_route():
+    try:
+        from manual_verification_packet_v17g import build_manual_verification_packet_v17g
+        return jsonify(build_manual_verification_packet_v17g()), 200
+    except Exception as e:
+        return jsonify({
+            "status":"error","version":"V17G",
+            "mode":"MANUAL_VERIFICATION_PACKET_EVIDENCE_RETURN_CONTRACT_READ_ONLY",
+            "error_type":type(e).__name__,"error":str(e)[:1200],
+            "guards":{"database_writes":False,"external_retrieval_performed":False,
+                      "investigate_state_touched":False,"contact_authorized":False,
+                      "seller_intent_inferred":False}
+        }), 200
