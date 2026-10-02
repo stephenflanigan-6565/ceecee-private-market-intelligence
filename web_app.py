@@ -38,7 +38,6 @@ from suffolk_clerk_retrieval_adapter_v17a import build_suffolk_clerk_retrieval_a
 from suffolk_county_transfer_history_v17b import build_suffolk_county_transfer_history_retrieval_v17b
 from evidence_resolution_date_semantics_v17c import build_evidence_resolution_date_semantics_v17c
 from authoritative_research_evidence_memory_v17d import build_authoritative_research_evidence_memory_v17d
-from persistent_evidence_reevaluation_v17e import build_persistent_evidence_reevaluation_v17e
 
 app = Flask(__name__)
 
@@ -627,12 +626,15 @@ def authoritative_research_evidence_memory_v17d_route():
                                   "contact_authorized":False,"seller_intent_inferred":False}}), 200
 
 
-@app.get("/api/intelligence/persistent-evidence-reevaluation-v17e")
-def persistent_evidence_reevaluation_v17e_route():
-    try:
-        return jsonify(build_persistent_evidence_reevaluation_v17e()), 200
-    except Exception as e:
-        return jsonify({"status":"error","version":"V17E","mode":"PERSISTENT_EVIDENCE_REEVALUATION",
-                        "error_type":type(e).__name__,"error":str(e)[:400],
-                        "guards":{"database_writes":False,"investigate_state_touched":False,
-                                  "contact_authorized":False,"seller_intent_inferred":False}}), 200
+@app.get("/api/intelligence/v17e2-route-probe")
+def v17e2_route_probe():
+    return jsonify({
+        "status": "ok",
+        "version": "V17E2",
+        "mode": "ROUTE_REGISTRATION_PROBE_ONLY",
+        "baseline": "V17D_PROVEN_LOCKED",
+        "intelligence_logic_loaded": False,
+        "database_access": False,
+        "database_writes": False,
+        "message": "Route registration is alive. No V17E re-evaluation logic executed."
+    }), 200
