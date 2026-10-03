@@ -759,3 +759,21 @@ def full_universe_reevaluation_readiness_v17l1_route():
             "guards":{"database_writes":False,"change_rescan_executed":False,
                       "investigate_state_touched":False,"contact_authorized":False,
                       "seller_intent_inferred":False}}), 200
+
+
+@app.get("/api/intelligence/self-contained-factual-rescan-v17m1")
+def self_contained_factual_rescan_v17m1_route():
+    try:
+        from self_contained_factual_rescan_v17m1 import build_self_contained_factual_rescan_v17m1
+        return jsonify(build_self_contained_factual_rescan_v17m1()), 200
+    except Exception as e:
+        return jsonify({
+            "status":"error","version":"V17M1",
+            "mode":"SELF_CONTAINED_PERSISTENT_EVIDENCE_FACTUAL_RESCAN_READ_ONLY",
+            "error_type":type(e).__name__,"error":str(e)[:1200],
+            "guards":{
+                "database_writes":False,"external_retrievals":False,
+                "investigate_state_touched":False,"new_candidate_created":False,
+                "seller_intent_inferred":False,"contact_authorized":False
+            }
+        }), 200
