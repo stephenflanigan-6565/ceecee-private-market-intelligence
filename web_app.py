@@ -1155,10 +1155,10 @@ def v18o_route():
     except Exception as e:
         return jsonify({"status":"error","version":"V18O","error_type":type(e).__name__,"error":str(e)[:1200],"guards":{"database_writes":False,"investigate_state_touched":False,"seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False}}), 200
 
-@app.get("/api/intelligence/v18t")
-def v18t_route():
+@app.get("/api/intelligence/v18u")
+def v18u_route():
     try:
-        from v18t import build_v18t
-        return jsonify(build_v18t()), 200
+        from v18u import build_v18u
+        return jsonify(build_v18u()), 200
     except Exception as e:
-        return jsonify({"status":"error","version":"V18T","error_type":type(e).__name__,"error":str(e)[:1200],"guards":{"database_writes":False,"investigate_state_touched":False,"seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False}}), 200
+        return jsonify({"status":"error","version":"V18U","error_type":type(e).__name__,"error":str(e)[:1200],"guards":{"database_writes":False,"investigate_state_touched":False,"seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False}}), 200
