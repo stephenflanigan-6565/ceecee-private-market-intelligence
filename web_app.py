@@ -987,3 +987,14 @@ def v18b_route():
         return jsonify({"status":"error","version":"V18B","error_type":type(e).__name__,
           "error":str(e)[:1200],"guards":{"database_writes":False,"investigate_state_touched":False,
           "seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False}}), 200
+
+
+@app.get("/api/intelligence/v18c")
+def v18c_route():
+    try:
+        from v18c import build_v18c
+        return jsonify(build_v18c()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V18C","error_type":type(e).__name__,
+          "error":str(e)[:1200],"guards":{"database_writes":False,"investigate_state_touched":False,
+          "seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False}}), 200
