@@ -803,3 +803,16 @@ def controlled_transfer_source_refresh_v17n1_route():
           "guards":{"database_writes":False,"investigate_state_touched":False,
                     "new_candidate_created":False,"seller_intent_inferred":False,
                     "contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
+
+
+@app.get("/api/intelligence/genuine-refresh-delta-validation-v17o")
+def genuine_refresh_delta_validation_v17o_route():
+    try:
+        from genuine_refresh_delta_validation_v17o import build_genuine_refresh_delta_validation_v17o
+        return jsonify(build_genuine_refresh_delta_validation_v17o()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17O","mode":"GENUINE_REFRESH_DELTA_VALIDATION_READ_ONLY",
+          "error_type":type(e).__name__,"error":str(e)[:1200],
+          "guards":{"database_writes":False,"investigate_state_touched":False,
+                    "new_candidate_created":False,"seller_intent_inferred":False,
+                    "contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
