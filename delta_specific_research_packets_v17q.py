@@ -1,11 +1,26 @@
 #!/usr/bin/env python3
 import json
+from decimal import Decimal, InvalidOperation
 from db import connect, execute
 from eight_delta_event_semantics_v17p import build_eight_delta_event_semantics_v17p
 
 VERSION="V17Q"
 MODE="DELTA_SPECIFIC_FACTUAL_RESEARCH_QUESTION_REEVALUATION_PACKETS_READ_ONLY"
 MARKET="WESTHAMPTON_BEACH_NY"
+
+def _sid(v):
+    if v is None:
+        return None
+    x=str(v).strip()
+    if not x:
+        return None
+    try:
+        d=Decimal(x)
+        if d == d.to_integral():
+            return str(d.quantize(Decimal("1")))
+    except (InvalidOperation, ValueError):
+        pass
+    return x
 
 def _payload(raw):
     try: return json.loads(raw)
@@ -48,7 +63,7 @@ def build_delta_specific_research_packets_v17q():
     packets=[]
     for e in source.get("new_event_packets") or []:
         hist=_history(e["parcel_id"])
-        prior=[x for x in hist if str(x.get("source_record_id"))!=str(e.get("source_record_id"))]
+        prior=[x for x in hist if _sid(x.get("source_record_id"))!=_sid(e.get("source_record_id"))]
         qs=[]
         if e.get("metadata_completion_pending"):
             qs.append({"question":"HAS_COUNTY_COMPLETED_RECORDDATE_AND_LIBERPAGE_FOR_NEW_INSTRUMENT","why":"NEW_SOURCE_IDENTITY_EXISTS_BUT_RECORDING_METADATA_IS_INCOMPLETE"})
@@ -60,7 +75,7 @@ def build_delta_specific_research_packets_v17q():
           "interpretation_limit":"NO_SELLER_INTENT_OR_MOTIVATION_INFERENCE"})
     for e in source.get("existing_event_enrichment_packets") or []:
         hist=_history(e["parcel_id"])
-        target=[x for x in hist if str(x.get("source_record_id"))==str(e.get("source_record_id"))]
+        target=[x for x in hist if _sid(x.get("source_record_id"))==_sid(e.get("source_record_id"))]
         packets.append({"packet_type":"EXISTING_EVENT_REEVALUATION","parcel_id":e["parcel_id"],"source_record_id":e["source_record_id"],
           "document_code":e.get("document_code"),"creates_second_event":False,"stored_target_event":target[0] if target else None,
           "authoritative_field_differences":e.get("field_differences"),
