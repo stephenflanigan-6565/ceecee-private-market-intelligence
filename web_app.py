@@ -775,3 +775,17 @@ def self_contained_factual_rescan_v17m2_route():
                     "investigate_state_touched":False,"new_candidate_created":False,
                     "seller_intent_inferred":False,"contact_authorized":False}
         }),200
+
+
+@app.get("/api/intelligence/controlled-transfer-source-refresh-v17n")
+def controlled_transfer_source_refresh_v17n_route():
+    try:
+        from controlled_transfer_source_refresh_v17n import build_controlled_transfer_source_refresh_v17n
+        return jsonify(build_controlled_transfer_source_refresh_v17n()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17N",
+          "mode":"CONTROLLED_TRANSFER_SOURCE_REFRESH_DELTA_COMPARISON_READ_ONLY",
+          "error_type":type(e).__name__,"error":str(e)[:1200],
+          "guards":{"database_writes":False,"investigate_state_touched":False,
+                    "new_candidate_created":False,"seller_intent_inferred":False,
+                    "contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
