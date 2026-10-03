@@ -830,3 +830,14 @@ def eight_delta_event_semantics_v17p_route():
           "guards":{"database_writes":False,"investigate_state_touched":False,
                     "new_candidate_created":False,"seller_intent_inferred":False,
                     "contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
+
+@app.get("/api/intelligence/delta-specific-research-packets-v17q1")
+def delta_specific_research_packets_v17q1_route():
+    try:
+        from delta_specific_research_packets_v17q import build_delta_specific_research_packets_v17q
+        return jsonify(build_delta_specific_research_packets_v17q()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17Q1","mode":"DELTA_SPECIFIC_FACTUAL_RESEARCH_QUESTION_REEVALUATION_PACKETS_READ_ONLY",
+          "error_type":type(e).__name__,"error":str(e)[:1200],
+          "guards":{"database_writes":False,"investigate_state_touched":False,"new_candidate_created":False,
+          "seller_intent_inferred":False,"contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
