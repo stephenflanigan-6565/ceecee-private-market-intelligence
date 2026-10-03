@@ -841,3 +841,15 @@ def delta_specific_research_packets_v17q1_route():
           "error_type":type(e).__name__,"error":str(e)[:1200],
           "guards":{"database_writes":False,"investigate_state_touched":False,"new_candidate_created":False,
           "seller_intent_inferred":False,"contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
+
+
+@app.get("/api/intelligence/research-question-source-routing-v17r")
+def research_question_source_routing_v17r_route():
+    try:
+        from research_question_source_routing_v17r import build_research_question_source_routing_v17r
+        return jsonify(build_research_question_source_routing_v17r()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17R","mode":"FACTUAL_RESEARCH_QUESTION_MEMORY_VS_FRESH_SOURCE_ROUTING_READ_ONLY",
+          "error_type":type(e).__name__,"error":str(e)[:1200],
+          "guards":{"database_writes":False,"investigate_state_touched":False,"new_candidate_created":False,
+          "seller_intent_inferred":False,"contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
