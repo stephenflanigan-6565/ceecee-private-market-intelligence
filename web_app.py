@@ -1098,3 +1098,15 @@ def v18k_route():
           "error":str(e)[:1200],"guards":{"database_writes":False,
           "investigate_state_touched":False,"seller_intent_inferred":False,
           "seller_scoring":False,"overall_ranking":False}}), 200
+
+
+@app.get("/api/intelligence/v18k1")
+def v18k1_route():
+    try:
+        from v18k1 import build_v18k1
+        return jsonify(build_v18k1()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V18K1","error_type":type(e).__name__,
+          "error":str(e)[:1200],"guards":{"database_writes":False,
+          "investigate_state_touched":False,"seller_intent_inferred":False,
+          "seller_scoring":False,"overall_ranking":False}}), 200
