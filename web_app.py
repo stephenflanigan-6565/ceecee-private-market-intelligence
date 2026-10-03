@@ -789,3 +789,17 @@ def controlled_transfer_source_refresh_v17n_route():
           "guards":{"database_writes":False,"investigate_state_touched":False,
                     "new_candidate_created":False,"seller_intent_inferred":False,
                     "contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
+
+
+@app.get("/api/intelligence/controlled-transfer-source-refresh-v17n1")
+def controlled_transfer_source_refresh_v17n1_route():
+    try:
+        from controlled_transfer_source_refresh_v17n1 import build_controlled_transfer_source_refresh_v17n1
+        return jsonify(build_controlled_transfer_source_refresh_v17n1()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17N1",
+          "mode":"CONTROLLED_TRANSFER_SOURCE_REFRESH_CANONICAL_DELTA_REPAIR",
+          "error_type":type(e).__name__,"error":str(e)[:1200],
+          "guards":{"database_writes":False,"investigate_state_touched":False,
+                    "new_candidate_created":False,"seller_intent_inferred":False,
+                    "contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
