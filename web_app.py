@@ -1386,3 +1386,11 @@ def v19r_route():
         return jsonify(build_v19r()), 200
     except Exception as e:
         return jsonify({"status":"error","version":"V19R","error_type":type(e).__name__,"error":str(e)[:1200]}),200
+
+@app.get("/api/intelligence/v19s")
+def v19s_route():
+    try:
+        from v19s import build_v19s
+        return jsonify(build_v19s()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V19S","error_type":type(e).__name__,"error":str(e)[:1200]}),200
