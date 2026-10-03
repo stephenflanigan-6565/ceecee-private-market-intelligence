@@ -1226,3 +1226,11 @@ def v19b1_route():
         return jsonify(build_v19b()), 200
     except Exception as e:
         return jsonify({"status":"error","version":"V19B1","error_type":type(e).__name__,"error":str(e)[:1200],"guards":{"database_writes":False,"external_calls":False,"schema_introspection":False,"investigate_state_touched":False,"seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False}}), 200
+
+@app.get("/api/intelligence/v19b2")
+def v19b2_route():
+    try:
+        from v19b2 import build_v19b2
+        return jsonify(build_v19b2()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V19B2","error_type":type(e).__name__,"error":str(e)[:1200],"guards":{"database_writes":False,"schema_introspection":False,"investigate_state_touched":False,"seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False}}), 200
