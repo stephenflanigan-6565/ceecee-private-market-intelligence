@@ -875,3 +875,14 @@ def v17t_route():
         return jsonify({"status":"error","version":"V17T","error_type":type(e).__name__,"error":str(e)[:1200],
           "guards":{"database_writes":False,"investigate_state_touched":False,"new_candidate_created":False,
           "seller_intent_inferred":False,"contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
+
+
+@app.get("/api/intelligence/v17u")
+def v17u_route():
+    try:
+        from v17u import build_v17u
+        return jsonify(build_v17u()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17U","error_type":type(e).__name__,"error":str(e)[:1200],
+          "guards":{"database_writes":False,"investigate_state_touched":False,"new_candidate_created":False,
+          "seller_intent_inferred":False,"contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
