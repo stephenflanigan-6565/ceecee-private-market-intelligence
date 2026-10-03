@@ -906,3 +906,13 @@ def v17w_route():
         return jsonify(build_v17w()), 200
     except Exception as e:
         return jsonify({"status":"error","version":"V17W","error_type":type(e).__name__,"error":str(e)[:1200]}), 200
+
+
+@app.get("/api/intelligence/v17w1")
+def v17w1_route():
+    try:
+        from v17w1 import build_v17w1
+        return jsonify(build_v17w1()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17W1","error_type":type(e).__name__,"error":str(e)[:1200],
+          "guards":{"database_writes":False}}), 200
