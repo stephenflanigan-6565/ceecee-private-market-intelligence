@@ -1394,3 +1394,19 @@ def v19t_route():
         return jsonify(build_v19t()), 200
     except Exception as e:
         return jsonify({"status":"error","version":"V19T","error_type":type(e).__name__,"error":str(e)[:1200]}),200
+
+@app.get("/api/intelligence/v19u")
+def v19u_api_route():
+    try:
+        from v19u import build_v19u
+        return jsonify(build_v19u()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V19U","error_type":type(e).__name__,"error":str(e)[:1200]}), 200
+
+@app.get("/intelligence/review")
+def v19u_review_route():
+    try:
+        from v19u import render_v19u
+        return render_v19u(), 200, {"Content-Type":"text/html; charset=utf-8"}
+    except Exception as e:
+        return jsonify({"status":"error","version":"V19U","error_type":type(e).__name__,"error":str(e)[:1200]}), 200
