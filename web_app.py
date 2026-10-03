@@ -816,3 +816,17 @@ def genuine_refresh_delta_validation_v17o_route():
           "guards":{"database_writes":False,"investigate_state_touched":False,
                     "new_candidate_created":False,"seller_intent_inferred":False,
                     "contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
+
+
+@app.get("/api/intelligence/eight-delta-event-semantics-v17p")
+def eight_delta_event_semantics_v17p_route():
+    try:
+        from eight_delta_event_semantics_v17p import build_eight_delta_event_semantics_v17p
+        return jsonify(build_eight_delta_event_semantics_v17p()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17P",
+          "mode":"EIGHT_DELTA_EVENT_SEMANTICS_RESEARCH_QUESTION_GATE_READ_ONLY",
+          "error_type":type(e).__name__,"error":str(e)[:1200],
+          "guards":{"database_writes":False,"investigate_state_touched":False,
+                    "new_candidate_created":False,"seller_intent_inferred":False,
+                    "contact_authorized":False,"clerk_kiosk_scraped":False}}), 200
