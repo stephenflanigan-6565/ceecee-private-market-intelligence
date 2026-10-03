@@ -745,3 +745,17 @@ def full_universe_reevaluation_readiness_v17l_route():
             "guards":{"database_writes":False,"change_rescan_executed":False,
                       "investigate_state_touched":False,"contact_authorized":False,
                       "seller_intent_inferred":False}}), 200
+
+
+@app.get("/api/intelligence/full-universe-reevaluation-readiness-v17l1")
+def full_universe_reevaluation_readiness_v17l1_route():
+    try:
+        from full_universe_reevaluation_readiness_v17l1 import build_full_universe_reevaluation_readiness_v17l1
+        return jsonify(build_full_universe_reevaluation_readiness_v17l1()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"V17L1",
+            "mode":"FULL_UNIVERSE_REEVALUATION_READINESS_EVIDENCE_FAMILY_REPAIR",
+            "error_type":type(e).__name__,"error":str(e)[:1200],
+            "guards":{"database_writes":False,"change_rescan_executed":False,
+                      "investigate_state_touched":False,"contact_authorized":False,
+                      "seller_intent_inferred":False}}), 200
