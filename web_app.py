@@ -1366,3 +1366,11 @@ def class_210_evidence_family_screen_v1_endpoint():
         return build_class_210_evidence_family_screen_v1()
     except Exception as e:
         return {'status':'error','version':'CLASS_210_EVIDENCE_FAMILY_SCREEN_V1','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'v19v_touched':False,'contact_authorized':False,'outreach_touched':False}}
+
+@app.get('/api/intelligence/class-210-targeted-remainder-resolution-v1')
+def class_210_targeted_remainder_resolution_v1_endpoint():
+    try:
+        from class_210_targeted_remainder_resolution_v1 import build_class_210_targeted_remainder_resolution_v1
+        return build_class_210_targeted_remainder_resolution_v1()
+    except Exception as e:
+        return {'status':'error','version':'CLASS_210_TARGETED_REMAINDER_RESOLUTION_V1','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'v19v_touched':False,'contact_authorized':False,'outreach_touched':False}}
