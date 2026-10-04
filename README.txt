@@ -1,6 +1,5 @@
-PMI FIND1
-Read-only property-centric FIND profile integration checkpoint.
-Endpoint: /api/intelligence/find1
-Deploy only find1.py and web_app.py from this folder.
-Requires previously deployed PMI modules already present in repository.
-No database writes. V19V untouched. No seller scoring or outreach.
+PMI FIND2 — Land / Property Utilization Discovery
+Endpoint: /api/intelligence/find2
+Deploy only find2.py and web_app.py from this folder.
+Read-only. Zero writes. V19V untouched.
+Purpose: add an independent land/property discovery route to the FIND1 property-centric chassis.

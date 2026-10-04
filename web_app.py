@@ -1398,3 +1398,11 @@ def find1_endpoint():
         return build_find1()
     except Exception as e:
         return {'status':'error','version':'FIND1','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'v19v_touched':False,'contact_authorized':False,'outreach_touched':False}}
+
+@app.get('/api/intelligence/find2')
+def find2_endpoint():
+    try:
+        from find2 import build_find2
+        return jsonify(build_find2()), 200
+    except Exception as e:
+        return jsonify({'status':'error','version':'FIND2','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'schema_changes':False,'investigate_state_touched':False,'v19v_touched':False,'seller_qualification_changes':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False}}), 200
