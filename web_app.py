@@ -1483,3 +1483,11 @@ def find11_endpoint():
         return jsonify(build_find11()), 200
     except Exception as e:
         return jsonify({'status':'error','version':'FIND11','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0}), 200
+
+@app.get('/api/intelligence/find12')
+def find12_endpoint():
+    try:
+        from find12 import build_find12
+        return jsonify(build_find12()), 200
+    except Exception as e:
+        return jsonify({'status':'degraded','version':'FIND12','error':type(e).__name__,'database_writes':0}), 503
