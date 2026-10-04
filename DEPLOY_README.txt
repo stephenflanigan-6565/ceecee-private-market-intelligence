@@ -1,20 +1,5 @@
-Canonical name: API Intelligence Targeted Property Assessment Lookup v1
-
-Purpose:
-One-property, read-only proof test on parcel 0905017000500015000 / 429A DUNE RD.
-Uses existing evidence first to determine whether stored property/assessment evidence can explain the surviving land-vs-improvement assessment anomaly before any external lookup or scaling to the remaining 23 cases.
-
-Endpoint:
-/api/intelligence/targeted-property-assessment-lookup-v1
-
-Guards:
-- zero database writes
-- zero external calls
-- no schema changes
-- V19V untouched
-- no seller scoring/ranking/intent inference
-- no contact authorization/outreach
-- ownership/title evidence is not accepted as a causal explanation for a property-assessment anomaly
-
-Expected next gate:
-If existing evidence reproduces but cannot causally explain the anomaly, authorize exactly one authoritative external property/assessment lookup for this single parcel before scaling.
+Canonical name: API Intelligence Property Form Peer Context v1
+Endpoint: /api/intelligence/property-form-peer-context-v1
+Purpose: one-property read-only test asking whether 429A Dune Rd remains anomalous after property-form-aware Dune Road/small-lot/physical peer narrowing. Human local context is preserved as a hypothesis; exact condo/co-op/association form is NOT asserted.
+Guards: zero DB writes, zero external calls at runtime, V19V untouched, no seller scoring/intent/contact/outreach.
+Deploy: copy changed/additive Python files into the existing app repository, commit, deploy, then open endpoint and return JSON.
