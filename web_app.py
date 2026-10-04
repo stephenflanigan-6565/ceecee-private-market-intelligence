@@ -1515,3 +1515,11 @@ def find15_endpoint():
         return jsonify(build_find15()), 200
     except Exception as e:
         return jsonify({'status':'error','version':'FIND15','error':str(e)}), 500
+
+@app.get('/api/intelligence/find16')
+def find16_endpoint():
+    try:
+        from find16 import build_find16
+        return jsonify(build_find16()), 200
+    except Exception as e:
+        return jsonify({'status':'error','version':'FIND16','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'schema_changes':False,'v19v_touched':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False}}), 200
