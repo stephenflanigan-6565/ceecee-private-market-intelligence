@@ -1326,3 +1326,11 @@ def seasonal_residence_context_v1_endpoint():
         return build_seasonal_residence_context_v1()
     except Exception as e:
         return {'status':'error','version':'SEASONAL_RESIDENCE_CONTEXT_V1','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'v19v_touched':False,'contact_authorized':False,'outreach_touched':False}}
+
+@app.get('/api/intelligence/assessment-route-contextual-peer-scale-v1')
+def assessment_route_contextual_peer_scale_v1_endpoint():
+    try:
+        from assessment_route_contextual_peer_scale_v1 import build_assessment_route_contextual_peer_scale_v1
+        return build_assessment_route_contextual_peer_scale_v1()
+    except Exception as e:
+        return {'status':'error','version':'ASSESSMENT_ROUTE_CONTEXTUAL_PEER_SCALE_V1','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'v19v_touched':False,'contact_authorized':False,'outreach_touched':False}}
