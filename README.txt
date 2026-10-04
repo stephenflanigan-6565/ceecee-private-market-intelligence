@@ -21,3 +21,9 @@ intent, scoring, ranking, contact authorization, outreach, writes, schema change
 V19V modification.
 
 Endpoint: /api/intelligence/find7
+
+FIND8 — targeted read-only zone geometric applicability checkpoint.
+Targets only FIND7 parcels with multi-zone or conservation/open-space signals.
+Computes parcel-area share intersecting each zoning polygon using authoritative Town GIS geometry.
+Geometric share is NOT lawful use, buildable area, subdivision yield, setback compliance, or entitlement.
+Endpoint: /api/intelligence/find8
