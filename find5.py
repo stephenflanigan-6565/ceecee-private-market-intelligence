@@ -4,7 +4,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from find4 import build_find4
 
-VERSION='FIND5'
+VERSION='FIND5R'
 PARCEL_URL='https://gis.southamptontownny.gov/gisserver/rest/services/DataServices/TaxParcels/MapServer/0/query'
 ZONING_URL='https://gis.southamptontownny.gov/gisserver/rest/services/DataServices/LandManager/MapServer/41/query'
 
@@ -14,14 +14,58 @@ def _get(url, params, timeout=12):
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8'))
 
-def _parcel_by_address(address):
-    # Exact address is used only to establish the Town parcel geometry; no owner fields requested.
-    safe=(address or '').replace("'","''")
-    data=_get(PARCEL_URL, {'f':'json','where':"ST_ADDRS='%s'"%safe,'outFields':'DSBL,SCTM,ST_ADDRS,PARCEL_ID,X_COORD,Y_COORD','returnGeometry':'true','outSR':'2263'})
-    fs=data.get('features') or []
-    if len(fs)!=1:
-        return None, 'NO_EXACT_PARCEL_MATCH' if not fs else 'MULTIPLE_EXACT_PARCEL_MATCHES'
-    return fs[0], None
+def _parcel_id_forms(parcel_id):
+    raw=''.join(ch for ch in str(parcel_id or '') if ch.isdigit())
+    forms=[]
+    if raw:
+        forms.append(raw)
+        # Suffolk/Town services may store the same tax-map identity with punctuation.
+        # Preserve leading zeroes and try common 4-4-4-4 grouping as a diagnostic form.
+        if len(raw)==19 and raw.startswith('0905'):
+            tail=raw[4:]
+            forms.extend([
+                raw[4:],
+                '-'.join([raw[4:8],raw[8:12],raw[12:16],raw[16:]]),
+                '.'.join([raw[4:8],raw[8:12],raw[12:16],raw[16:]])
+            ])
+    out=[]
+    for x in forms:
+        if x and x not in out: out.append(x)
+    return out
+
+def _parcel_by_taxmap(parcel_id, address=None):
+    # Tax-map identity is primary. Address is diagnostic only and never substitutes silently.
+    forms=_parcel_id_forms(parcel_id)
+    fields=('TAXMAP','GV_TAXMAP','DSBL','SCTM')
+    attempts=[]
+    for field in fields:
+        for form in forms:
+            safe=form.replace("'","''")
+            try:
+                data=_get(PARCEL_URL, {'f':'json','where':f"{field}='{safe}'",'outFields':'TAXMAP,GV_TAXMAP,DSBL,SCTM,ST_ADDRS,PARCEL_ID,X_COORD,Y_COORD','returnGeometry':'true','outSR':'2263'})
+            except Exception as e:
+                attempts.append({'field':field,'form':form,'state':'QUERY_ERROR','error_type':type(e).__name__})
+                continue
+            if data.get('error'):
+                attempts.append({'field':field,'form':form,'state':'FIELD_OR_QUERY_REJECTED'})
+                continue
+            fs=data.get('features') or []
+            attempts.append({'field':field,'form':form,'matches':len(fs)})
+            if len(fs)==1:
+                return fs[0], None, {'matched_field':field,'matched_form':form,'attempts':attempts}
+            if len(fs)>1:
+                return None, 'MULTIPLE_TAXMAP_MATCHES', {'matched_field':field,'matched_form':form,'attempts':attempts}
+    # Address cross-check is diagnostic only: report if it finds a unique parcel but do not call it a tax-map match.
+    if address:
+        safe=str(address).replace("'","''")
+        try:
+            data=_get(PARCEL_URL, {'f':'json','where':"ST_ADDRS='%s'"%safe,'outFields':'TAXMAP,GV_TAXMAP,DSBL,SCTM,ST_ADDRS,PARCEL_ID,X_COORD,Y_COORD','returnGeometry':'true','outSR':'2263'})
+            fs=data.get('features') or []
+            if len(fs)==1:
+                return fs[0], 'ADDRESS_ONLY_DIAGNOSTIC_MATCH', {'attempts':attempts,'address_match_count':1}
+        except Exception:
+            pass
+    return None, 'NO_TAXMAP_MATCH', {'attempts':attempts}
 
 def _zone_for_parcel(feature):
     geom=feature.get('geometry')
@@ -65,12 +109,16 @@ def build_find5():
              'observed_relationships':lr.get('observed_relationships') or [],
              'seller_intent':'UNKNOWN','contact_authorized':False}
         try:
-            parcel,err=_parcel_by_address(p.get('property_address'))
-            if err:
+            parcel,err,diag=_parcel_by_taxmap(p.get('parcel_id'),p.get('property_address'))
+            rec['parcel_identity_diagnostic']=diag
+            if err and err!='ADDRESS_ONLY_DIAGNOSTIC_MATCH':
                 rec['adapter_state']=err; outcomes[err]+=1
+            elif err=='ADDRESS_ONLY_DIAGNOSTIC_MATCH':
+                rec['adapter_state']='ADDRESS_ONLY_DIAGNOSTIC_MATCH'; outcomes[rec['adapter_state']]+=1
+                a=parcel.get('attributes') or {}; rec['town_parcel_match']={k:a.get(k) for k in ('TAXMAP','GV_TAXMAP','DSBL','SCTM','ST_ADDRS','PARCEL_ID')}
             else:
                 a=parcel.get('attributes') or {}
-                rec['town_parcel_match']={k:a.get(k) for k in ('DSBL','SCTM','ST_ADDRS','PARCEL_ID')}
+                rec['town_parcel_match']={k:a.get(k) for k in ('TAXMAP','GV_TAXMAP','DSBL','SCTM','ST_ADDRS','PARCEL_ID')}
                 zones,zerr=_zone_for_parcel(parcel)
                 rec['zoning']=zones
                 if zerr:
@@ -89,13 +137,13 @@ def build_find5():
       'source_contract':{
         'parcel_source':'Town of Southampton DataServices/TaxParcels MapServer layer 0',
         'zoning_source':'Town of Southampton DataServices/LandManager MapServer layer 41 — Westhampton Beach',
-        'parcel_match':'EXACT_ST_ADDRS_FOR_VALIDATION_ONLY',
+        'parcel_match':'TAXMAP_IDENTITY_FIRST_USING_TAXMAP_GV_TAXMAP_DSBL_SCTM; ADDRESS_DIAGNOSTIC_ONLY',
         'zoning_match':'SPATIAL_INTERSECTION_OF_AUTHORITATIVE_TOWN_PARCEL_GEOMETRY',
         'owner_fields_requested':False},
       'sample_policy':'DETERMINISTIC_UP_TO_2_PER_FIND4_LAND_STATE_CAUSAL_FAMILY_RELATIONSHIP_COMBINATION_MAX_12',
       'summary':{'find4_unified_profiles':len(profiles),'find4_land_profiles':sum(1 for p in profiles if p.get('land_route')),
                  'validation_sample':len(sample),'adapter_outcomes':dict(outcomes),'zones_observed':dict(zone_counts),
-                 'all_sample_records_resolved':bool(sample) and resolved==len(sample)},
+                 'all_sample_records_resolved':bool(sample) and resolved==len(sample),'taxmap_primary_key_validation':True},
       'results':results,
       'interpretation_policy':{
         'zoning_fact_does_not_equal_redevelopment_permission':True,
@@ -107,7 +155,7 @@ def build_find5():
       'guards':{'database_writes':False,'external_calls':True,'external_calls_read_only':True,'schema_changes':False,
                 'v19v_touched':False,'seller_qualification_changes':False,'seller_intent_inferred':False,
                 'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False},
-      'next_if_verified':'SCALE AUTHORITATIVE PARCEL_TO_ZONING JOIN ACROSS ALL 153 FIND4 LAND ROUTES; THEN TEST ZONING_AND_SITE_CONTEXT AS CAUSAL EVIDENCE WITHOUT INFERRING ENTITLEMENT'
+      'next_if_verified':'SCALE VALIDATED TAXMAP_PARCEL_TO_ZONING JOIN ACROSS ALL 153 FIND4 LAND ROUTES; THEN TEST ZONING_AND_SITE_CONTEXT AS CAUSAL EVIDENCE WITHOUT INFERRING ENTITLEMENT'
     }
 
 if __name__=='__main__':
