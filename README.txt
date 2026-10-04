@@ -1,13 +1,5 @@
-PMI FIND4 — Unified Property-Centric FIND Chassis
-
-Deploy these files together into the existing DigitalOcean app.
-Endpoint: /api/intelligence/find4
-
-Purpose:
-- Preserve FIND1 assessment/research-router history.
-- Consume FIND3 full-population causal triage.
-- Union independent routes by parcel ID.
-- Allow land-only properties to enter FIND without seller-intent inference.
-- Preserve closed routes as memory; route kill never equals property kill.
-
-Read-only. No database writes. No V19V changes. No outreach/contact authorization.
+PMI FIND5 — Targeted Site/Use Source Adapter Validation
+Endpoint: /api/intelligence/find5
+Purpose: validate Town of Southampton parcel geometry -> Westhampton Beach zoning join on a deterministic FIND4 land-route cross-section before scaling.
+READ ONLY. External calls are authoritative public GIS reads only. Zero DB writes. No seller inference, score, ranking, outreach, or contact authorization.
+Includes FIND1-FIND5 dependencies and web_app.py.
