@@ -1,21 +1,27 @@
-PMI FIND5P — GIS SOURCE CONTRACT PROBE
+PMI FIND5C — LIVE-CONTRACT SCTM PARCEL → WESTHAMPTON BEACH ZONING VALIDATION
 
 Purpose
-- Diagnose the live Town of Southampton ArcGIS parcel/zoning layer schema and query behavior.
-- This is the isolated repair checkpoint after FIND5R proved all attempted TAXMAP/GV_TAXMAP/DSBL/SCTM queries were rejected.
+Validate the Town GIS join on a deterministic 12-property FIND4 land-route cross-section.
 
-Endpoint
-/api/intelligence/find5-probe
+Repair from FIND5/FIND5R
+FIND5P proved the live Tax Parcels layer exposes SCTM as a string and showed a sample
+19-digit SCTM in the same Suffolk identifier family used by PMI. FIND5C therefore uses
+only exact SCTM='<PMI parcel_id>' for parcel identity. Address is cross-check only.
+
+Then:
+1. return authoritative Town parcel geometry;
+2. spatially intersect that geometry with LandManager layer 41 (Westhampton Beach);
+3. report zoning CODE / ZONE / DESCRIPT where present.
 
 Safety
-- READ ONLY external GIS calls.
-- Zero database writes.
-- Zero FIND route decisions or changes.
-- No seller scoring/ranking/intent/contact/outreach.
-- V19V untouched.
+Read only. No database writes. No seller scoring/ranking/intent. No contact/outreach.
+No route is rejected because a source match is missing. Zoning is evidence only and
+does not prove subdivision, redevelopment permission, entitlement, or economics.
+V19V remains untouched.
 
-Acceptance
-- Parcel metadata returns live field names/types and capabilities, OR an explicit ArcGIS/HTTP error.
-- A harmless where=1=1 sample query returns one feature schema, OR an explicit error.
-- Controlled TAXMAP query returns its exact ArcGIS error or valid response.
-- Do not scale or modify FIND routes from this probe.
+Live endpoint
+/api/intelligence/find5
+
+Pass signal
+A meaningful portion of the validation sample returns PARCEL_AND_ZONING_RESOLVED.
+NO_SCTM_MATCH remains UNKNOWN and is not a property rejection.
