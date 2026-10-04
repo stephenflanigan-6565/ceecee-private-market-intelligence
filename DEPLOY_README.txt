@@ -1,4 +1,3 @@
-Canonical name: API Intelligence Class 210 Causal Scale v1
-Endpoint: /api/intelligence/class-210-causal-scale-v1
-Read-only additive test. Zero writes. No endpoint external calls. V19V untouched.
-Purpose: apply the proven REDEVELOPMENT_ASSESSMENT_DISCONTINUITY causal-kill discipline to class-210 survivors without force-fitting unresolved cases.
+Canonical name: API Intelligence Class 210 Evidence Family Screen v1
+Endpoint: /api/intelligence/class-210-evidence-family-screen-v1
+Read-only additive checkpoint. No database writes, no external calls from endpoint, no seller intent/contact/outreach, V19V untouched.
