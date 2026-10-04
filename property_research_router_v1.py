@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from collections import Counter
 from property_anomaly_explainer_v1 import build_property_anomaly_explainer_v1
 
-VERSION="PROPERTY_RESEARCH_ROUTER_V1"
+VERSION="PROPERTY_RESEARCH_ROUTER_V1_1"
 
 def _route(c):
     p=c.get("physical_context") or {}
@@ -54,14 +54,30 @@ def build_property_research_router_v1():
     routed=[_route(c) for c in cases]
     rc=Counter(x["research_route"] for x in routed); ac=Counter(x["recommended_action"] for x in routed)
     qc=Counter(q for x in routed for q in x["data_quality_uncertainties"])
+    expected=(base.get("summary") or {}).get("surviving_or_verification_cases") or 0
+    input_ids=[c.get("parcel_id") for c in cases if c.get("parcel_id")]
+    routed_ids=[x.get("parcel_id") for x in routed if x.get("parcel_id")]
+    missing_ids=sorted(set(input_ids)-set(routed_ids))
+    duplicate_input_ids=sorted({pid for pid in input_ids if input_ids.count(pid)>1})
+    reconciliation={
+      "expected_surviving_or_verification_cases":expected,
+      "input_cases_received":len(cases),
+      "unique_input_parcels":len(set(input_ids)),
+      "cases_routed":len(routed),
+      "unique_routed_parcels":len(set(routed_ids)),
+      "missing_after_routing":missing_ids,
+      "duplicate_input_parcels":duplicate_input_ids,
+      "all_expected_cases_accounted_for": expected==len(cases)==len(routed)==len(set(routed_ids)) and not missing_ids and not duplicate_input_ids
+    }
     return {
-      "status":"ok","version":VERSION,"mode":"READ_ONLY_INFORMATION_VALUE_RESEARCH_ROUTER",
+      "status":"ok" if reconciliation["all_expected_cases_accounted_for"] else "reconciliation_failed","version":VERSION,"mode":"READ_ONLY_INFORMATION_VALUE_RESEARCH_ROUTER",
       "generated_at":datetime.now(timezone.utc).isoformat(),
       "source_checkpoint":{"version":base.get("version"),"base_a4_anomalies":base.get("summary",{}).get("base_a4_anomalies"),"surviving_or_verification_cases":base.get("summary",{}).get("surviving_or_verification_cases")},
       "summary":{"cases_routed":len(routed),"research_routes":dict(rc),"recommended_actions":dict(ac),"data_quality_uncertainties":dict(qc)},
+      "reconciliation":reconciliation,
       "policy":{"information_value_before_new_source":True,"machine_research_before_human_when_possible":True,"missing_information_nonblocking":True,"needs_ceecee_verification_valid":True,"manual_review_is_exception_path":True,"data_quality_is_not_opportunity_evidence":True,"seller_intent_inferred":False},
       "routed_cases":routed,
       "database_writes":0,
       "guards":{"database_writes":False,"external_calls":False,"schema_changes":False,"investigate_state_touched":False,"v19v_touched":False,"seller_qualification_changes":False,"seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False,"contact_authorized":False,"outreach_touched":False},
-      "next_if_verified":"USE_ROUTING_COUNTS_AND_CASE_QUESTIONS_TO_SELECT_THE_FIRST_TARGETED_FACT_RESOLUTION_TEST_WITHOUT_BULK_MANUAL_REVIEW"
+      "next_if_verified":"ONLY_PROCEED_IF_ALL_EXPECTED_CASES_ACCOUNTED_FOR; THEN_SELECT_FIRST_TARGETED_FACT_RESOLUTION_TEST_WITHOUT_BULK_MANUAL_REVIEW"
     }
