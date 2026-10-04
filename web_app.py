@@ -1295,10 +1295,10 @@ def api_property_research_router_v1_1():
     except Exception as exc:
         return jsonify({"status":"error","version":"PROPERTY_RESEARCH_ROUTER_V1_1","error_type":type(exc).__name__,"error":str(exc)[:300],"database_writes":0,"guards":{"v19v_touched":False,"seller_qualification_changes":False,"contact_authorized":False}}), 500
 
-@app.get("/api/intelligence/property-source-semantics-audit-v1")
-def api_property_source_semantics_audit_v1():
+@app.get("/api/intelligence/assessment-improvement-fact-resolution-v1")
+def assessment_improvement_fact_resolution_v1_endpoint():
     try:
-        from property_source_semantics_audit_v1 import build_property_source_semantics_audit_v1
-        return jsonify(build_property_source_semantics_audit_v1()), 200
-    except Exception as exc:
-        return jsonify({"status":"error","version":"PROPERTY_SOURCE_SEMANTICS_AUDIT_V1","error_type":type(exc).__name__,"error":str(exc)[:500],"database_writes":0,"guards":{"database_writes":False,"external_calls":False,"schema_changes":False,"investigate_state_touched":False,"v19v_touched":False,"seller_qualification_changes":False,"seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False,"contact_authorized":False,"outreach_touched":False}}), 500
+        from assessment_improvement_fact_resolution_v1 import build_assessment_improvement_fact_resolution_v1
+        return build_assessment_improvement_fact_resolution_v1()
+    except Exception as e:
+        return {"status":"error","version":"ASSESSMENT_IMPROVEMENT_FACT_RESOLUTION_V1","error":str(e),"database_writes":0,"guards":{"database_writes":False,"v19v_touched":False,"contact_authorized":False,"outreach_touched":False}}
