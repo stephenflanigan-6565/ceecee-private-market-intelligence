@@ -1507,3 +1507,11 @@ def find14_endpoint():
         return jsonify(build_find14()), 200
     except Exception as e:
         return jsonify({'status':'degraded','version':'FIND14','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'schema_changes':False,'v19v_touched':False,'seller_intent_inferred':False,'seller_scoring':False,'contact_authorized':False,'outreach_touched':False}}), 503
+
+@app.get('/api/intelligence/find15')
+def find15_endpoint():
+    try:
+        from find15 import build_find15
+        return jsonify(build_find15()), 200
+    except Exception as e:
+        return jsonify({'status':'error','version':'FIND15','error':str(e)}), 500
