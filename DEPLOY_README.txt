@@ -1,3 +1,4 @@
-Canonical name: API Intelligence Assessment Route Contextual Peer Scale v1
-Endpoint: /api/intelligence/assessment-route-contextual-peer-scale-v1
-Purpose: Scale the proven contextual-peer kill test across all 24 assessment/improvement-route cases before any additional external lookup. Read-only. Zero writes. V19V untouched. Class 260 is interpreted only as SEASONAL_RESIDENCE; other class-code meanings are not asserted.
+Canonical name: API Intelligence Residential Class Semantics v1
+Endpoint: /api/intelligence/residential-class-semantics-v1
+Purpose: Resolve NY ORPTS class 210/260/281 semantics and gate the 24 assessment-route cases before any bulk external lookup.
+Read-only. Zero DB writes. Zero runtime external calls. V19V untouched. No seller intent, scoring, qualification, contact authorization, or outreach.
