@@ -1466,3 +1466,12 @@ def find9_endpoint():
         return jsonify(build_find9()), 200
     except Exception as e:
         return jsonify({'status':'error','version':'FIND9','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':True,'external_calls_read_only':True,'schema_changes':False,'v19v_touched':False,'seller_qualification_changes':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False}}), 200
+
+
+@app.get('/api/intelligence/find10')
+def find10_endpoint():
+    try:
+        from find10 import build_find10
+        return jsonify(build_find10()), 200
+    except Exception as e:
+        return jsonify({'status':'error','version':'FIND10','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':True,'external_calls_read_only':True,'schema_changes':False,'v19v_touched':False,'seller_qualification_changes':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False}}), 200

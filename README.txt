@@ -1,20 +1,21 @@
-PMI FIND9 — FIND8S Geometry Integration Checkpoint
+PMI FIND10 — Targeted Property-Form Fact Test
 
-Purpose:
-Integrate the verified FIND8S geometric zone evidence into the FIND7 property-centric chassis.
+Purpose
+- Continue from promoted FIND9 property-intelligence chassis.
+- Query ONE already-available authoritative Town parcel field (PROP_TYPE).
+- Scope ONLY to existing FIND9 TARGETED_FACT_REQUIRED cases.
 
-Key result encoded from the live FIND8S checkpoint:
-- 18 target parcels have resolved geometric zone applicability.
-- Those 18 are effectively single-zone geometries; apparent additional zones are zero-area boundary touches or <=0.1% slivers.
-- 27 STACY DR remains UNKNOWN due source timeout.
-- 16 E DIVISION ST was not returned by the FIND8S live run and remains UNKNOWN.
-- Unknown geometry is nonblocking. No further GIS hunt is authorized by this checkpoint.
+Decision boundary
+- This is not generic enrichment and does not open a new data hunt.
+- A returned PROP_TYPE is one property-form fact only.
+- It does not prove vacancy, buildability, entitlement, lawful use, or seller intent.
+- Missing/ambiguous data does not hold PMI back. If the fact is material and still unresolved,
+  retain the targeted/human-verification need; otherwise continue.
 
-Interpretation boundary:
-Geometry is spatial fact only. It is not entitlement, buildability, lawful-use proof, subdivision yield, seller intent, qualification, ranking, contact authorization, or outreach.
+Endpoint
+/api/intelligence/find10
 
-Endpoint:
-/api/intelligence/find9
-
-Next if verified:
-Use FIND9 as the property-intelligence chassis, then test ONE authoritative current property/improvement-form fact for the existing TARGETED_FACT_REQUIRED cases. Do not begin a generic data hunt.
+Protected
+- FIND9 logic preserved.
+- V19V untouched.
+- No writes, scoring, ranking, seller qualification, contact, or outreach.
