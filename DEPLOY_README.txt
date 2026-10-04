@@ -1,20 +1,14 @@
-CANONICAL NAME: API Intelligence Property Anomaly Lab v1.1
+CANONICAL NAME: API Intelligence Property Anomaly Explainer v1
 
-Purpose: diagnostic repair of v1 after live schema PASS / zero-candidate result.
+PURPOSE
+Explain/kill the 87 A4 land-vs-improvement assessment anomalies found by Property Anomaly Lab v1.1 using existing physical-property context before any new source or human review.
 
-Changed files:
-- property_anomaly_lab_v1_1.py (NEW)
-- web_app.py (adds one endpoint; prior v1 endpoint remains intact)
+CHANGED FILES ONLY
+1. web_app.py
+2. property_anomaly_explainer_v1.py
 
-New endpoint:
-/api/intelligence/property-anomaly-lab-v1-1
+ENDPOINT
+/api/intelligence/property-anomaly-explainer-v1
 
-Repairs / additions:
-1. Recognizes live parcel_address field.
-2. Transparently derives improvement_assessment = assessed_total - assessed_land when direct field is absent.
-3. Adds diagnostic maxima, near-threshold counts, and peer-group sizes so zero results are interpretable.
-4. Keeps high-specificity candidate thresholds unchanged for this isolated test.
-
-GUARDS:
-READ ONLY. 0 DB writes. No schema changes. No external calls. No V19V state changes.
-No seller qualification, seller score, contact authority, or outreach.
+GUARDS
+READ ONLY. No DB writes. No V19V changes. No seller qualification/scoring. No contact/outreach authority. Missing information is nonblocking. NEEDS_CEECEE_VERIFICATION is an allowed research disposition for worthwhile cases that cannot be resolved automatically; it is not contact authorization.
