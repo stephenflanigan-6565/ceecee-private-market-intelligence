@@ -1,4 +1,4 @@
-Canonical name: API Intelligence Residential Class Semantics v1
-Endpoint: /api/intelligence/residential-class-semantics-v1
-Purpose: Resolve NY ORPTS class 210/260/281 semantics and gate the 24 assessment-route cases before any bulk external lookup.
-Read-only. Zero DB writes. Zero runtime external calls. V19V untouched. No seller intent, scoring, qualification, contact authorization, or outreach.
+Canonical name: API Intelligence Class 210 Causal Resolution v1
+Endpoint: /api/intelligence/class-210-causal-resolution-v1
+Purpose: prove a strict causal kill pattern for assessment anomalies using 177 Sunset Ave as the controlled class-210 case. Requires redevelopment + assessment discontinuity temporal alignment; class transition strengthens evidence. Kills only the assessment-anomaly route, never the property or independent opportunity routes.
+Safety: read-only, zero writes, no endpoint external calls, no seller intent, no scoring/ranking, no contact/outreach, V19V untouched.

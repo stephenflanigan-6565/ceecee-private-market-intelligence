@@ -1342,3 +1342,11 @@ def residential_class_semantics_v1_endpoint():
         return build_residential_class_semantics_v1()
     except Exception as e:
         return {'status':'error','version':'RESIDENTIAL_CLASS_SEMANTICS_V1','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'v19v_touched':False,'contact_authorized':False,'outreach_touched':False}}
+
+@app.get('/api/intelligence/class-210-causal-resolution-v1')
+def class_210_causal_resolution_v1_endpoint():
+    try:
+        from class_210_causal_resolution_v1 import build_class_210_causal_resolution_v1
+        return build_class_210_causal_resolution_v1()
+    except Exception as e:
+        return {'status':'error','version':'CLASS_210_CAUSAL_RESOLUTION_V1','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'v19v_touched':False,'contact_authorized':False,'outreach_touched':False}}
