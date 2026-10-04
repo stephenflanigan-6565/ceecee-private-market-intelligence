@@ -45,28 +45,36 @@ def _triage(c):
       'integration_rule':'ROUTE_STATE_CHANGES_DO_NOT_KILL_PROPERTY_OR_OTHER_INDEPENDENT_ROUTES'
     }
 
-def build_find3():
-    base=build_find2(); src=base.get('candidates') or []
+def build_find3(include_all_profiles=False):
+    base=build_find2(include_all_candidates=True); src=base.get('candidates') or []
     tri=[_triage(c) for c in src]
     counts=Counter(x['triage_state'] for x in tri); fams=Counter(x['causal_family'] for x in tri)
-    # FIND2 currently exposes the first 40 diagnostic candidates. FIND3 is explicit about this scope.
+    # Full machine handoff plus compact operator display. Every candidate is triaged before sampling.
+    samples=[]
+    for family in sorted(fams):
+        members=[x for x in tri if x['causal_family']==family]
+        samples.extend(members[:min(3,len(members))])
+    display=tri if include_all_profiles else samples
     return {
       'status':'ok','version':VERSION,'mode':'READ_ONLY_LAND_PROPERTY_CAUSAL_TRIAGE','generated_at':datetime.now(timezone.utc).isoformat(),
       'scope':{'find2_whole_market_candidate_count':base.get('summary',{}).get('candidate_properties'),
-               'triaged_records_returned_by_find2_payload':len(src),
-               'important':'FIND3_TRIAGES_THE_FIND2_EXPOSED_DIAGNOSTIC_SET_ONLY; IT_DOES_NOT_CLAIM_CAUSAL_RESOLUTION_OF_ALL_153'},
+               'triaged_candidate_count':len(src),
+               'complete_population_coverage':len(src)==base.get('summary',{}).get('candidate_properties')},
       'triage_policy':{
         'zero_improvement_is_not_vacancy_proof':True,'missing_or_zero_physical_fields_are_not_opportunity_proof':True,
         'causal_kill_requires_explanatory_evidence':True,'internal_corroboration_may_keep_route_alive':True,
         'unknown_or_targeted_fact_is_valid_state':True,'route_kill_never_equals_property_kill':True,
         'assessment_components_are_supporting_economic_evidence_only':True,'seller_intent_inferred':False},
-      'summary':{'triage_state_counts':dict(counts),'causal_family_counts':dict(fams)},
-      'profiles':tri,
+      'summary':{'triage_state_counts':dict(counts),'causal_family_counts':dict(fams),
+                 'find2_candidate_count':base.get('summary',{}).get('candidate_properties'),'triaged_candidate_count':len(tri),
+                 'coverage_complete':len(tri)==base.get('summary',{}).get('candidate_properties')},
+      'profile_payload':{'total_triaged':len(tri),'returned':len(display),'complete':bool(include_all_profiles),'display_policy':'ALL_FOR_MACHINE_HANDOFF' if include_all_profiles else 'DETERMINISTIC_UP_TO_3_PER_CAUSAL_FAMILY'},
+      'profiles':display,
       'representative_external_research_lessons_not_applied_as_database_fact':[
         {'lesson':'SUBSTANTIAL_RECORDED_BUILDING_PLUS_ZERO_PARCEL_IMPROVEMENT_CAN_SIGNAL_PROPERTY_FORM_OR_ASSESSMENT_SEMANTICS','production_rule':'REQUIRE_AUTHORITATIVE_PROPERTY_FORM_OR_ASSESSMENT_ALLOCATION_BEFORE_ROUTE_KILL'},
         {'lesson':'SMALL_REAL_IMPROVEMENT_ON_LAND_DOMINANT_DUNE_PARCEL_CAN_BE_A_REAL_RELATIONSHIP','production_rule':'KEEP_ROUTE_ALIVE_WHEN_INTERNAL_BUILDING_AND_ASSESSMENT_FACTS_CORROBORATE; THEN_TEST_SITE_USE_CONSTRAINT'},
         {'lesson':'ZERO_OR_MISSING_LIVING_AREA_CAN_CONFLICT_WITH_REAL_WORLD_BUILDING_PRESENCE','production_rule':'DOWNGRADE_TO_NEEDS_TARGETED_FACT; NEVER_STRENGTHEN_VACANCY_HYPOTHESIS_FROM_ZERO_FIELD_ALONE'}],
       'guards':{'database_writes':False,'external_calls':False,'schema_changes':False,'investigate_state_touched':False,'v19v_touched':False,'seller_qualification_changes':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False,'closed_class_210_routes_reopened':False},
       'database_writes':0,
-      'next_if_verified':'SCALE_CAUSAL_TRIAGE_ACROSS_ALL_FIND2_CANDIDATES_WITHOUT_TRUNCATION; THEN_INTEGRATE_ONLY_SURVIVING_OR_TARGETED_FACT_LAND_ROUTES_INTO_PROPERTY_CENTRIC_FIND_PROFILE'
+      'next_if_verified':'INTEGRATE_SURVIVING_OR_TARGETED_FACT_LAND_ROUTES_INTO_PROPERTY_CENTRIC_FIND_PROFILE_WITHOUT_REOPENING_CLOSED_ASSESSMENT_ROUTES'
     }

@@ -1,21 +1,25 @@
-PMI FIND3 — Land/Property Causal Triage
-Endpoint: /api/intelligence/find3
+PMI FIND3 — Full-Population Causal Triage Repair
 
-Deploy these three files together:
-- find2.py (required FIND3 dependency; unchanged FIND2 discovery rail)
-- find3.py (new causal triage layer)
-- web_app.py (adds FIND3 endpoint)
+Deploy only these files together:
+- find2.py
+- find3.py
+- web_app.py
 
-READ ONLY. No database writes. No seller scoring/ranking. No seller intent inference.
-No outreach/contact authorization. V19V untouched. Closed Class-210 routes stay closed.
+Endpoint:
+/api/intelligence/find3
 
 Purpose:
-- preserve why PMI noticed a land/property relationship
-- distinguish corroborated relationships from data/property-form conflicts
-- never treat zero improvement or missing/zero living-area as vacancy proof
-- require explanatory evidence for causal route closure
-- retain NEEDS_TARGETED_FACT as a valid state
+- FIND2 still evaluates the full WHB residential universe and keeps its operator endpoint compact.
+- FIND3 now requests FIND2's complete in-memory candidate population and causally triages every discovered land/property-utilization candidate before any display sampling.
+- FIND3 endpoint returns full coverage/state/family counts plus deterministic examples (up to 3 per causal family), avoiding a giant operator payload.
+- A future FIND integration may call build_find3(include_all_profiles=True) for the complete machine handoff.
 
-Important scope: FIND2 currently exposes 40 diagnostic candidate records in its payload even though
-whole-market discovery found 153. FIND3 truthfully triages those 40 only. If live verification passes,
-the next build scales the triage across all 153 without changing the discovery rule.
+Expected live proof:
+- scope.find2_whole_market_candidate_count = 153 (assuming unchanged data)
+- scope.triaged_candidate_count = 153
+- scope.complete_population_coverage = true
+- summary.coverage_complete = true
+- profile_payload.complete = false on the public endpoint by design; this refers only to display sampling, not triage coverage.
+
+Guards:
+READ ONLY. No writes, schema changes, seller scoring/ranking/intent, contact authorization, outreach, investigation-state changes, V19V changes, or reopening of closed Class-210 assessment routes.

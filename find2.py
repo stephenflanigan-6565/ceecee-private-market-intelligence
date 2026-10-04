@@ -38,7 +38,7 @@ def _pct(xs,x):
  if x is None or not xs:return None
  s=sorted(xs);return (sum(v<x for v in s)+.5*sum(v==x for v in s))/len(s)
 def _med(xs):return statistics.median(xs) if xs else None
-def build_find2():
+def build_find2(include_all_candidates=False):
  import psycopg
  conn=psycopg.connect(os.environ['DATABASE_URL'])
  try:
@@ -106,7 +106,8 @@ def build_find2():
   'architecture':{'integrates_with':'FIND1','independent_discovery_route':'LAND_PROPERTY_UTILIZATION','property_not_seller_model':True,'contextual_not_universal_thresholds':True,'assessment_components_used_as_supporting_economic_evidence_not_seller_signal':True},
   'summary':{'whole_market_properties':len(recs),'candidate_properties':len(candidates),'candidate_relationship_counts':dict(family_counts),'data_quality_or_peer_exclusions':dict(excluded)},
   'field_coverage':dict(coverage),'peer_policy':{'primary':'SAME_PROPERTY_CLASS','minimum_peer_count':20,'core_relationship':'BOTTOM_10_PERCENT_IMPROVEMENT_TO_LAND_RATIO_AND_TOP_10_PERCENT_LAND_SHARE_WITHIN_COMPATIBLE_CLASS','acreage_is_separate_context_not_universal_gate':True,'living_sqft_is_corroboration_not_required':True},
-  'candidates':candidates[:40],
+  'candidates':candidates if include_all_candidates else candidates[:40],
+  'candidate_payload':{'total':len(candidates),'returned':len(candidates) if include_all_candidates else min(40,len(candidates)),'complete':bool(include_all_candidates)},
   'policy':{'one_fact_not_seller':True,'seller_intent_inferred':False,'missing_information_nonblocking':True,'unknown_valid_state':True,'route_kill_never_equals_property_kill':True,'closed_class_210_routes_reopened':False,'score_or_rank_exposed':False},
   'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'schema_changes':False,'investigate_state_touched':False,'v19v_touched':False,'seller_qualification_changes':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False},
   'next_if_verified':'INTEGRATE SURVIVING LAND_PROPERTY_UTILIZATION ROUTES INTO FIND1 PROPERTY PROFILES; THEN APPLY TARGETED CAUSAL_KILL RESEARCH ONLY WHERE A SINGLE FACT HAS HIGH INFORMATION VALUE'}
