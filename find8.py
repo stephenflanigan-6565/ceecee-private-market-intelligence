@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from find7 import build_find7
 from find5 import _parcel_by_sctm, ZONING_URL, _post
 
-VERSION='FIND8R'
+VERSION='FIND8S'
 GEOM_INTERSECT='https://gis.southamptontownny.gov/gisserver/rest/services/Utilities/Geometry/GeometryServer/intersect'
 
 def _ring_signed_area(ring):
@@ -44,11 +44,11 @@ def _intersect(parcel_geom, zone_geom):
     payload={
       'f':'json','sr':'2263',
       'geometries':json.dumps({'geometryType':'esriGeometryPolygon','geometries':[pg]}, separators=(',',':')),
-      'geometry':json.dumps(zg, separators=(',',':'))}
+      'geometry':json.dumps({'geometryType':'esriGeometryPolygon','geometry':zg}, separators=(',',':'))}
     data=_post(GEOM_INTERSECT, payload)
     if data.get('error'):
         return None, {'service_error':data.get('error'),
-                      'geometry_contract':'EXPLICIT_WKID_2263_ON_BOTH_POLYGONS'}
+                      'geometry_contract':'ESRI_DOCUMENTED_GEOMETRY_ARRAY_PLUS_WRAPPED_SINGLE_POLYGON_WKID_2263'}
     gs=data.get('geometries') or []
     return (gs[0] if gs else None), None
 
@@ -110,7 +110,7 @@ def build_find8():
             outcomes['SOURCE_REQUEST_ERROR']+=1; zone_share_states['SOURCE_REQUEST_UNKNOWN']+=1
         results.append(rec)
     resolved=outcomes.get('GEOMETRIC_ZONE_APPLICABILITY_RESOLVED',0)
-    return {'status':'ok','version':VERSION,'mode':'READ_ONLY_TARGETED_ZONE_GEOMETRIC_APPLICABILITY_GEOMETRYSERVER_CONTRACT_REPAIR',
+    return {'status':'ok','version':VERSION,'mode':'READ_ONLY_TARGETED_ZONE_GEOMETRIC_APPLICABILITY_ESRI_WRAPPED_GEOMETRY_REPAIR',
       'generated_at':datetime.now(timezone.utc).isoformat(),
       'purpose':'RESOLVE_HOW_MUCH_OF_EACH_SPECIALIZED_FIND7_PARCEL_GEOMETRICALLY_INTERSECTS_EACH_ZONING_POLYGON_WITHOUT_INFERRING_LAWFUL_USE_BUILDABILITY_SUBDIVISION_YIELD_OR_ENTITLEMENT',
       'source_checkpoint':{'find7':f7.get('version'),'unified_property_profiles':len(f7.get('profiles') or [])},
