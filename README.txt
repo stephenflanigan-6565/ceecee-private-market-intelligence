@@ -1,19 +1,26 @@
-PMI FIND5D — SCTM PARCEL → ZONING TRANSPORT REPAIR
+PMI FIND6 — FULL LAND SITE/USE CONTEXT SCALE
 
-FIND5C proved exact 19-digit SCTM identity for all 12 validation parcels and resolved
-zoning for 9. Three parcels failed only during the geometry-bearing zoning request
-with HTTP 404.
+Purpose
+Scale the proven FIND5D exact-SCTM parcel identity and POST geometry zoning intersection
+across all 153 FIND4 land routes.
 
-FIND5D changes one thing:
-- zoning spatial-intersection request uses form-encoded HTTP POST instead of GET.
+This is evidence enrichment, not a seller detector and not entitlement analysis.
 
-Unchanged:
-- exact SCTM parcel identity
-- deterministic 12-property validation sample
-- zoning layer and spatial relationship
-- FIND4/FIND3 logic and route states
-- no seller intent, scoring, ranking, contact, outreach, writes, or V19V changes
-- missing/failed zoning evidence remains UNKNOWN, never property rejection
-- zoning does not imply entitlement, subdivision permission, or redevelopment approval
+For every FIND4 land route FIND6:
+- resolves the Town parcel by exact 19-digit SCTM;
+- intersects parcel geometry with the Westhampton Beach zoning layer;
+- records zoning code/description/dimensional-regime context;
+- distinguishes single-zone context from multi-zone complexity;
+- flags conservation/open-space, commercial/hamlet, and multifamily context;
+- preserves missing/failed evidence as UNKNOWN.
 
-Endpoint: /api/intelligence/find5
+Critical interpretation
+Zoning does NOT prove subdivision permission, teardown rights, redevelopment approval,
+buildability, economic feasibility, or seller intent. Multi-zone intersection is
+complexity, not automatic opportunity.
+
+No writes, scoring, ranking, outreach, contact authorization, seller-intent inference,
+schema change, or V19V modification.
+
+Endpoint
+/api/intelligence/find6
