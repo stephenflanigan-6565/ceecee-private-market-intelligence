@@ -1,25 +1,20 @@
-Canonical name: API Intelligence Assessment Improvement Fact Resolution v1
+Canonical name: API Intelligence Targeted Property Assessment Lookup v1
 
 Purpose:
-Apply the locked source-semantics consumption rules to the 24 cases routed to VERIFY_IMPROVEMENT_AND_ASSESSMENT_SEMANTICS. This is a read-only kill/strengthen handoff, not a seller score and not marketing.
+One-property, read-only proof test on parcel 0905017000500015000 / 429A DUNE RD.
+Uses existing evidence first to determine whether stored property/assessment evidence can explain the surviving land-vs-improvement assessment anomaly before any external lookup or scaling to the remaining 23 cases.
 
 Endpoint:
-/api/intelligence/assessment-improvement-fact-resolution-v1
+/api/intelligence/targeted-property-assessment-lookup-v1
 
-Expected live reconciliation:
-- expected_target_cases: 24
-- target_cases_received: 24
-- cases_resolved: 24
-- unique_target_parcels: 24
-- duplicate_target_parcels: []
-- all_target_cases_accounted_for: true
+Guards:
+- zero database writes
+- zero external calls
+- no schema changes
+- V19V untouched
+- no seller scoring/ranking/intent inference
+- no contact authorization/outreach
+- ownership/title evidence is not accepted as a causal explanation for a property-assessment anomaly
 
-Protected rules:
-- full_market_value is prohibited as opportunity evidence in the current dataset because it is zero population-wide.
-- assessed_total and assessed_land are assessment components, not market price.
-- zero full baths is a plausibility warning only.
-- property class may group peers without inventing class-code semantics.
-- no seller-intent inference, score/rank, outreach/contact authority, schema changes, database writes, or V19V changes.
-
-Forward contract:
-Each case preserves property identity, WHY PMI found it, consumable evidence, excluded/contradictory data-quality evidence, material unknown, and one next fact. Future owner/property enrichment and marketing-relevant characteristics remain separate and evidence-gated.
+Expected next gate:
+If existing evidence reproduces but cannot causally explain the anomaly, authorize exactly one authoritative external property/assessment lookup for this single parcel before scaling.

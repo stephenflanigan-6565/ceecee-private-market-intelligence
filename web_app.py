@@ -1302,3 +1302,11 @@ def assessment_improvement_fact_resolution_v1_endpoint():
         return build_assessment_improvement_fact_resolution_v1()
     except Exception as e:
         return {"status":"error","version":"ASSESSMENT_IMPROVEMENT_FACT_RESOLUTION_V1","error":str(e),"database_writes":0,"guards":{"database_writes":False,"v19v_touched":False,"contact_authorized":False,"outreach_touched":False}}
+
+@app.get("/api/intelligence/targeted-property-assessment-lookup-v1")
+def targeted_property_assessment_lookup_v1_endpoint():
+    try:
+        from targeted_property_assessment_lookup_v1 import build_targeted_property_assessment_lookup_v1
+        return build_targeted_property_assessment_lookup_v1()
+    except Exception as e:
+        return {"status":"error","version":"TARGETED_PROPERTY_ASSESSMENT_LOOKUP_V1","error_type":type(e).__name__,"error":str(e)[:1200],"database_writes":0,"guards":{"database_writes":False,"external_calls":False,"v19v_touched":False,"contact_authorized":False,"outreach_touched":False}}
