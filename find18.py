@@ -2,9 +2,29 @@
 import json
 from collections import Counter
 from datetime import datetime, timezone
-from find17 import build_find17
 
 VERSION = 'FIND18'
+
+# Promoted FIND17 evidence memory. FIND18 consumes the resolved facts directly;
+# it does not recompute FIND17 or depend on earlier analytics modules at runtime.
+PROMOTED_FIND17_CASES = [
+    {
+        'parcel_id': '0905009000200013011',
+        'property_address': '233 ONECK LN',
+        'state': 'SUPPORTED_PROPERTY_FORM_HYPOTHESIS',
+        'observed_prop_type': '312',
+        'orpts_interpretation': 'RESIDENTIAL_LAND_WITH_SMALL_NON_LIVING_IMPROVEMENT',
+        'property_form_family': 'VACANT_OR_MINIMALLY_IMPROVED',
+    },
+    {
+        'parcel_id': '0905012000400025000',
+        'property_address': '36 SUNSET AVE',
+        'state': 'SUPPORTED_PROPERTY_FORM_HYPOTHESIS',
+        'observed_prop_type': '312',
+        'orpts_interpretation': 'RESIDENTIAL_LAND_WITH_SMALL_NON_LIVING_IMPROVEMENT',
+        'property_form_family': 'VACANT_OR_MINIMALLY_IMPROVED',
+    },
+]
 
 # These are already-resolved authoritative Town zoning facts from the FIND5D/FIND6 evidence chain.
 # FIND18 intentionally reuses memory; it does not make another external request.
@@ -137,8 +157,7 @@ def _reason_case(f17):
     return base
 
 def build_find18():
-    f17 = build_find17()
-    supported = f17.get('supported_property_form_hypotheses') or []
+    supported = PROMOTED_FIND17_CASES
     results = [_reason_case(x) for x in supported]
     states = Counter(x.get('state') for x in results)
     branches = Counter(x.get('opportunity_branch') for x in results)
