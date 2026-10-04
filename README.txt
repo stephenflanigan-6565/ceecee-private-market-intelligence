@@ -1,27 +1,19 @@
-PMI FIND5C — LIVE-CONTRACT SCTM PARCEL → WESTHAMPTON BEACH ZONING VALIDATION
+PMI FIND5D — SCTM PARCEL → ZONING TRANSPORT REPAIR
 
-Purpose
-Validate the Town GIS join on a deterministic 12-property FIND4 land-route cross-section.
+FIND5C proved exact 19-digit SCTM identity for all 12 validation parcels and resolved
+zoning for 9. Three parcels failed only during the geometry-bearing zoning request
+with HTTP 404.
 
-Repair from FIND5/FIND5R
-FIND5P proved the live Tax Parcels layer exposes SCTM as a string and showed a sample
-19-digit SCTM in the same Suffolk identifier family used by PMI. FIND5C therefore uses
-only exact SCTM='<PMI parcel_id>' for parcel identity. Address is cross-check only.
+FIND5D changes one thing:
+- zoning spatial-intersection request uses form-encoded HTTP POST instead of GET.
 
-Then:
-1. return authoritative Town parcel geometry;
-2. spatially intersect that geometry with LandManager layer 41 (Westhampton Beach);
-3. report zoning CODE / ZONE / DESCRIPT where present.
+Unchanged:
+- exact SCTM parcel identity
+- deterministic 12-property validation sample
+- zoning layer and spatial relationship
+- FIND4/FIND3 logic and route states
+- no seller intent, scoring, ranking, contact, outreach, writes, or V19V changes
+- missing/failed zoning evidence remains UNKNOWN, never property rejection
+- zoning does not imply entitlement, subdivision permission, or redevelopment approval
 
-Safety
-Read only. No database writes. No seller scoring/ranking/intent. No contact/outreach.
-No route is rejected because a source match is missing. Zoning is evidence only and
-does not prove subdivision, redevelopment permission, entitlement, or economics.
-V19V remains untouched.
-
-Live endpoint
-/api/intelligence/find5
-
-Pass signal
-A meaningful portion of the validation sample returns PARCEL_AND_ZONING_RESOLVED.
-NO_SCTM_MATCH remains UNKNOWN and is not a property rejection.
+Endpoint: /api/intelligence/find5

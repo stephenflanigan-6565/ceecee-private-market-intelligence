@@ -4,13 +4,22 @@ from collections import Counter
 from datetime import datetime, timezone
 from find4 import build_find4
 
-VERSION='FIND5C'
+VERSION='FIND5D'
 PARCEL_URL='https://gis.southamptontownny.gov/gisserver/rest/services/DataServices/TaxParcels/MapServer/0/query'
 ZONING_URL='https://gis.southamptontownny.gov/gisserver/rest/services/DataServices/LandManager/MapServer/41/query'
 
 def _get(url, params, timeout=12):
     q=urllib.parse.urlencode(params)
     req=urllib.request.Request(url+'?'+q, headers={'User-Agent':'PMI-Research/1.0'})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read().decode('utf-8'))
+
+def _post(url, params, timeout=12):
+    body=urllib.parse.urlencode(params).encode('utf-8')
+    req=urllib.request.Request(url, data=body, headers={
+        'User-Agent':'PMI-Research/1.0',
+        'Content-Type':'application/x-www-form-urlencoded'
+    }, method='POST')
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8'))
 
@@ -47,7 +56,7 @@ def _zone_for_parcel(feature):
     geom=feature.get('geometry')
     if not geom: return [],'PARCEL_GEOMETRY_MISSING'
     # ArcGIS polygon geometry can be supplied directly for spatial intersection.
-    data=_get(ZONING_URL, {'f':'json','where':'1=1','outFields':'CODE,ZONE,DESCRIPT,DIM_REG,LL_PATH',
+    data=_post(ZONING_URL, {'f':'json','where':'1=1','outFields':'CODE,ZONE,DESCRIPT,DIM_REG,LL_PATH',
                            'returnGeometry':'false','geometry':json.dumps(geom),
                            'geometryType':'esriGeometryPolygon','inSR':'2263','spatialRel':'esriSpatialRelIntersects'})
     fs=data.get('features') or []
@@ -111,7 +120,7 @@ def build_find5():
         'parcel_source':'Town of Southampton DataServices/TaxParcels MapServer layer 0',
         'zoning_source':'Town of Southampton DataServices/LandManager MapServer layer 41 — Westhampton Beach',
         'parcel_match':'EXACT_SCTM_19_DIGIT_IDENTITY_PROVEN_BY_LIVE_FIND5P_CONTRACT; ADDRESS_CROSS_CHECK_ONLY',
-        'zoning_match':'SPATIAL_INTERSECTION_OF_AUTHORITATIVE_TOWN_PARCEL_GEOMETRY',
+        'zoning_match':'FORM_POST_SPATIAL_INTERSECTION_OF_AUTHORITATIVE_TOWN_PARCEL_GEOMETRY',
         'owner_fields_requested':False},
       'sample_policy':'DETERMINISTIC_UP_TO_2_PER_FIND4_LAND_STATE_CAUSAL_FAMILY_RELATIONSHIP_COMBINATION_MAX_12',
       'summary':{'find4_unified_profiles':len(profiles),'find4_land_profiles':sum(1 for p in profiles if p.get('land_route')),
