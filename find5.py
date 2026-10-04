@@ -4,7 +4,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from find4 import build_find4
 
-VERSION='FIND5R'
+VERSION='FIND5P'
 PARCEL_URL='https://gis.southamptontownny.gov/gisserver/rest/services/DataServices/TaxParcels/MapServer/0/query'
 ZONING_URL='https://gis.southamptontownny.gov/gisserver/rest/services/DataServices/LandManager/MapServer/41/query'
 
@@ -13,6 +13,58 @@ def _get(url, params, timeout=12):
     req=urllib.request.Request(url+'?'+q, headers={'User-Agent':'PMI-Research/1.0'})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode('utf-8'))
+
+PARCEL_META_URL='https://gis.southamptontownny.gov/gisserver/rest/services/DataServices/TaxParcels/MapServer/0'
+ZONING_META_URL='https://gis.southamptontownny.gov/gisserver/rest/services/DataServices/LandManager/MapServer/41'
+
+def _probe_json(url, params=None, timeout=12):
+    params=params or {'f':'pjson'}
+    try:
+        data=_get(url, params, timeout=timeout)
+        return {'state':'OK','payload':data}
+    except Exception as e:
+        return {'state':'REQUEST_ERROR','error_type':type(e).__name__,'error':str(e)[:500]}
+
+def build_find5_probe():
+    # Source-contract diagnostic only. No FIND route decisions are made here.
+    parcel_meta=_probe_json(PARCEL_META_URL, {'f':'pjson'})
+    zoning_meta=_probe_json(ZONING_META_URL, {'f':'pjson'})
+    sample=_probe_json(PARCEL_URL, {'f':'json','where':'1=1','outFields':'*','returnGeometry':'false','resultRecordCount':1})
+    identity=_probe_json(PARCEL_URL, {'f':'json','where':"TAXMAP='005000100021000'",'outFields':'*','returnGeometry':'false','resultRecordCount':2})
+
+    def summarize_meta(probe):
+        if probe.get('state')!='OK': return probe
+        d=probe.get('payload') or {}
+        return {
+          'state':'OK', 'name':d.get('name'),'type':d.get('type'),
+          'maxRecordCount':d.get('maxRecordCount'),'capabilities':d.get('capabilities'),
+          'supportedQueryFormats':d.get('supportedQueryFormats'),
+          'advancedQueryCapabilities':d.get('advancedQueryCapabilities'),
+          'fields':[{'name':f.get('name'),'alias':f.get('alias'),'type':f.get('type')} for f in (d.get('fields') or [])],
+          'service_error':d.get('error')
+        }
+    def summarize_query(probe):
+        if probe.get('state')!='OK': return probe
+        d=probe.get('payload') or {}
+        fs=d.get('features') or []
+        return {'state':'ARC_GIS_ERROR' if d.get('error') else 'OK',
+                'service_error':d.get('error'),'fields':d.get('fields'),
+                'feature_count':len(fs),'sample_attributes':(fs[0].get('attributes') if fs else None)}
+    return {
+      'status':'ok','version':VERSION,'mode':'READ_ONLY_GIS_SOURCE_CONTRACT_PROBE',
+      'generated_at':datetime.now(timezone.utc).isoformat(),
+      'purpose':'DISCOVER_LIVE_ARCGIS_LAYER_FIELDS_AND_QUERY_CONTRACT_BEFORE_ANY_FURTHER_PARCEL_IDENTITY_ASSUMPTIONS',
+      'find_routes_evaluated':0,'find_routes_changed':0,'database_writes':0,
+      'parcel_layer_metadata':summarize_meta(parcel_meta),
+      'zoning_layer_metadata':summarize_meta(zoning_meta),
+      'parcel_sample_query':summarize_query(sample),
+      'controlled_taxmap_query':summarize_query(identity),
+      'interpretation':'THIS_PROBE_DIAGNOSES_SOURCE_SCHEMA_AND_QUERY_BEHAVIOR_ONLY; IT_DOES_NOT_ACCEPT_REJECT_OR_RANK_ANY_PROPERTY',
+      'guards':{'database_writes':False,'external_calls':True,'external_calls_read_only':True,'schema_changes':False,
+                'v19v_touched':False,'seller_qualification_changes':False,'seller_intent_inferred':False,
+                'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False},
+      'next_if_verified':'REPAIR_PARCEL_IDENTITY_ADAPTER_USING_ONLY_FIELDS_AND_QUERY_SEMANTICS_PROVEN_BY_THIS_LIVE_SOURCE_CONTRACT'
+    }
 
 def _parcel_id_forms(parcel_id):
     raw=''.join(ch for ch in str(parcel_id or '') if ch.isdigit())
