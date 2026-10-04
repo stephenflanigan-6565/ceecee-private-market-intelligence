@@ -1,6 +1,6 @@
 PMI FIND16 — Land-Led Replacement Economics Discovery Experiment
 
-Canonical package: PMI_FIND16.zip
+Canonical package: PMI_FIND17.zip
 Endpoint: /api/intelligence/find16
 
 Purpose
@@ -24,3 +24,8 @@ Critical limits
 
 Pass condition
 Promote only if the three-part mechanism adds meaningful novel discovery or materially distinct corroboration beyond the current land-utilization, age-mismatch, and redevelopment-halo rails. Otherwise kill the rail without adding data.
+
+
+FIND17 — Vacant / Minimally Improved Property-Form Learning Experiment
+Endpoint: /api/intelligence/find17
+Purpose: Reuse only the six already-targeted FIND10 property-form facts and NYS ORPTS base-code semantics. Distinguish supported vacant/minimally-improved property form from residential-improved contradictions and UNKNOWN. No generic market enrichment. No buildability, seller-intent, scoring, outreach, or contact inference.
