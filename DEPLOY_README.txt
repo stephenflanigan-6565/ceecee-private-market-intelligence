@@ -1,3 +1,3 @@
-Canonical name: API Intelligence Class 210 Evidence Family Screen v1
-Endpoint: /api/intelligence/class-210-evidence-family-screen-v1
-Read-only additive checkpoint. No database writes, no external calls from endpoint, no seller intent/contact/outreach, V19V untouched.
+Canonical name: API Intelligence Class 210 Targeted Remainder Resolution v1 — Packaging Repair
+Endpoint: /api/intelligence/class-210-targeted-remainder-resolution-v1
+PACKAGING REPAIR ONLY: same intelligence logic/version. Full proven root-level additive module bundle included so web_app.py imports resolve in production. No schema changes, no writes, no live external calls, V19V untouched.
