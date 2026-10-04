@@ -136,6 +136,6 @@ def build_property_anomaly_explainer_v1():
  return {"status":"ok","version":VERSION,"mode":"READ_ONLY_ANOMALY_EXPLANATION_LAB","generated_at":datetime.now(timezone.utc).isoformat(),
   "summary":{"full_universe":len(recs),"base_a4_anomalies":len(base),"dispositions":dict(explained),"surviving_or_verification_cases":len(survivors)},
   "field_coverage":dict(cov),"explanation_policy":{"purpose":"KILL_EXPLAINABLE_FALSE_POSITIVES_BEFORE_HUMAN_REVIEW","missing_information_nonblocking":True,"needs_ceecee_verification_is_valid_state":True,"manual_review_is_exception_path_not_bulk_queue":True,"seller_intent_inferred":False},
-  "inspection_cases":survivors,"inspection_case_count":len(survivors),"inspection_cases_truncated":False,"database_writes":0,
+  "inspection_cases":survivors[:30],"database_writes":0,
   "guards":{"database_writes":False,"external_calls":False,"schema_changes":False,"investigate_state_touched":False,"v19v_touched":False,"seller_qualification_changes":False,"seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False,"contact_authorized":False,"outreach_touched":False},
   "next_if_verified":"REVIEW_SURVIVING_CASES_AND_DECIDE_WHICH_MISSING_FACT_HAS_HIGHEST_INFORMATION_VALUE"}

@@ -1532,3 +1532,11 @@ def find17_endpoint():
         return jsonify(build_find17()), 200
     except Exception as e:
         return jsonify({'status':'error','version':'FIND17','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':True,'external_calls_read_only':True,'schema_changes':False,'v19v_touched':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False}}), 200
+
+@app.get('/api/intelligence/find18')
+def find18_endpoint():
+    try:
+        from find18 import build_find18
+        return jsonify(build_find18()), 200
+    except Exception as e:
+        return jsonify({'status':'error','version':'FIND18','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'schema_changes':False,'v19v_touched':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False}}), 200
