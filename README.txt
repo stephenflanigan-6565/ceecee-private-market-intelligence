@@ -1,26 +1,23 @@
-PMI FIND6 — FULL LAND SITE/USE CONTEXT SCALE
+PMI FIND7 — PROPERTY-CENTRIC FIND PROFILE + AUTHORITATIVE SITE/USE EVIDENCE
 
-Purpose
-Scale the proven FIND5D exact-SCTM parcel identity and POST geometry zoning intersection
-across all 153 FIND4 land routes.
+FIND6 live result passed at 153/153 parcel+zoning resolutions.
 
-This is evidence enrichment, not a seller detector and not entitlement analysis.
+FIND7 integrates that evidence into the unified FIND4 property profile. It explicitly
+keeps separate:
+- WHY PMI NOTICED THE PROPERTY;
+- authoritative site/use facts learned later;
+- WHAT THOSE FACTS CHANGE;
+- contradictions/unknowns;
+- the NEXT BEST PROPERTY QUESTION.
 
-For every FIND4 land route FIND6:
-- resolves the Town parcel by exact 19-digit SCTM;
-- intersects parcel geometry with the Westhampton Beach zoning layer;
-- records zoning code/description/dimensional-regime context;
-- distinguishes single-zone context from multi-zone complexity;
-- flags conservation/open-space, commercial/hamlet, and multifamily context;
-- preserves missing/failed evidence as UNKNOWN.
+Special site/use conditions create targeted questions, not higher scores:
+- multi-zone → geometric applicability;
+- conservation/open space → affected portion/buildable-area question;
+- commercial/hamlet → lawful use + dimensional-regime question;
+- multifamily → property-form/permitted-use question.
 
-Critical interpretation
-Zoning does NOT prove subdivision permission, teardown rights, redevelopment approval,
-buildability, economic feasibility, or seller intent. Multi-zone intersection is
-complexity, not automatic opportunity.
+Zoning is not entitlement. Constraint evidence is not automatic rejection. No seller
+intent, scoring, ranking, contact authorization, outreach, writes, schema changes, or
+V19V modification.
 
-No writes, scoring, ranking, outreach, contact authorization, seller-intent inference,
-schema change, or V19V modification.
-
-Endpoint
-/api/intelligence/find6
+Endpoint: /api/intelligence/find7
