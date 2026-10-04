@@ -1458,3 +1458,11 @@ def find8_endpoint():
         return jsonify(build_find8()), 200
     except Exception as e:
         return jsonify({'status':'error','version':'FIND8','error_type':type(e).__name__,'error':str(e)}), 500
+
+@app.get('/api/intelligence/find9')
+def find9_endpoint():
+    try:
+        from find9 import build_find9
+        return jsonify(build_find9()), 200
+    except Exception as e:
+        return jsonify({'status':'error','version':'FIND9','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':True,'external_calls_read_only':True,'schema_changes':False,'v19v_touched':False,'seller_qualification_changes':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False}}), 200
