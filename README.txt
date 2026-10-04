@@ -1,7 +1,6 @@
-PMI C210 Closeout v1
-Short-name/minimal deployment package.
-Files required for this checkpoint:
-- web_app.py (current app with one additive route)
-- c210_close1.py (new read-only closeout module)
-Endpoint: /api/intelligence/c210-close1
-No database writes. V19V untouched. No outreach/contact authorization.
+PMI FIND1
+Read-only property-centric FIND profile integration checkpoint.
+Endpoint: /api/intelligence/find1
+Deploy only find1.py and web_app.py from this folder.
+Requires previously deployed PMI modules already present in repository.
+No database writes. V19V untouched. No seller scoring or outreach.
