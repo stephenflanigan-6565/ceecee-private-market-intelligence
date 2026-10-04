@@ -1382,3 +1382,11 @@ def class_210_counterexample_causal_family_v1_endpoint():
         return build_class_210_counterexample_causal_family_v1()
     except Exception as e:
         return {'status':'error','version':'CLASS_210_COUNTEREXAMPLE_CAUSAL_FAMILY_V1','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'v19v_touched':False,'contact_authorized':False,'outreach_touched':False}}
+
+@app.get('/api/intelligence/c210-close1')
+def c210_close1_endpoint():
+    try:
+        from c210_close1 import build_c210_close1
+        return build_c210_close1()
+    except Exception as e:
+        return {'status':'error','version':'C210_CLOSE1','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'v19v_touched':False,'contact_authorized':False,'outreach_touched':False}}
