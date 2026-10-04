@@ -1,29 +1,15 @@
-PMI FIND7 — PROPERTY-CENTRIC FIND PROFILE + AUTHORITATIVE SITE/USE EVIDENCE
+PMI FIND8R — GeometryServer Contract Repair
 
-FIND6 live result passed at 153/153 parcel+zoning resolutions.
+FIND8 proved all 20 target parcels and parcel areas resolve, but all remote polygon
+intersections failed with ArcGIS "Syntax error in JSON geometry representation".
 
-FIND7 integrates that evidence into the unified FIND4 property profile. It explicitly
-keeps separate:
-- WHY PMI NOTICED THE PROPERTY;
-- authoritative site/use facts learned later;
-- WHAT THOSE FACTS CHANGE;
-- contradictions/unknowns;
-- the NEXT BEST PROPERTY QUESTION.
+FIND8R changes one thing only:
+- embeds spatialReference {wkid:2263} directly in BOTH polygon geometries sent to
+  GeometryServer/intersect, while retaining sr=2263 at the operation level.
 
-Special site/use conditions create targeted questions, not higher scores:
-- multi-zone → geometric applicability;
-- conservation/open space → affected portion/buildable-area question;
-- commercial/hamlet → lawful use + dimensional-regime question;
-- multifamily → property-form/permitted-use question.
+The same 20 FIND7 multi-zone/conservation targets are rerun. Service errors are
+preserved verbatim. No FIND7 route/state logic changes. No writes, scoring, ranking,
+seller intent, contact, outreach, entitlement, buildability, subdivision-yield, or
+V19V changes.
 
-Zoning is not entitlement. Constraint evidence is not automatic rejection. No seller
-intent, scoring, ranking, contact authorization, outreach, writes, schema changes, or
-V19V modification.
-
-Endpoint: /api/intelligence/find7
-
-FIND8 — targeted read-only zone geometric applicability checkpoint.
-Targets only FIND7 parcels with multi-zone or conservation/open-space signals.
-Computes parcel-area share intersecting each zoning polygon using authoritative Town GIS geometry.
-Geometric share is NOT lawful use, buildable area, subdivision yield, setback compliance, or entitlement.
 Endpoint: /api/intelligence/find8

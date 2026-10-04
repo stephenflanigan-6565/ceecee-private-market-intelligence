@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from find7 import build_find7
 from find5 import _parcel_by_sctm, ZONING_URL, _post
 
-VERSION='FIND8'
+VERSION='FIND8R'
 GEOM_INTERSECT='https://gis.southamptontownny.gov/gisserver/rest/services/Utilities/Geometry/GeometryServer/intersect'
 
 def _ring_signed_area(ring):
@@ -31,12 +31,24 @@ def _zones_with_geometry(parcel_geom):
     fs=data.get('features') or []
     return fs, (None if fs else 'NO_WHB_ZONING_INTERSECTION'), None
 
+def _with_sr(geom):
+    # GeometryServer operations are stricter than layer spatial filters: embed
+    # the coordinate system in each geometry rather than relying only on sr=.
+    g=json.loads(json.dumps(geom or {}))
+    g['spatialReference']={'wkid':2263}
+    return g
+
 def _intersect(parcel_geom, zone_geom):
-    data=_post(GEOM_INTERSECT, {
+    pg=_with_sr(parcel_geom)
+    zg=_with_sr(zone_geom)
+    payload={
       'f':'json','sr':'2263',
-      'geometries':json.dumps({'geometryType':'esriGeometryPolygon','geometries':[parcel_geom]}),
-      'geometry':json.dumps(zone_geom)})
-    if data.get('error'): return None, data.get('error')
+      'geometries':json.dumps({'geometryType':'esriGeometryPolygon','geometries':[pg]}, separators=(',',':')),
+      'geometry':json.dumps(zg, separators=(',',':'))}
+    data=_post(GEOM_INTERSECT, payload)
+    if data.get('error'):
+        return None, {'service_error':data.get('error'),
+                      'geometry_contract':'EXPLICIT_WKID_2263_ON_BOTH_POLYGONS'}
     gs=data.get('geometries') or []
     return (gs[0] if gs else None), None
 
@@ -98,7 +110,7 @@ def build_find8():
             outcomes['SOURCE_REQUEST_ERROR']+=1; zone_share_states['SOURCE_REQUEST_UNKNOWN']+=1
         results.append(rec)
     resolved=outcomes.get('GEOMETRIC_ZONE_APPLICABILITY_RESOLVED',0)
-    return {'status':'ok','version':VERSION,'mode':'READ_ONLY_TARGETED_ZONE_GEOMETRIC_APPLICABILITY',
+    return {'status':'ok','version':VERSION,'mode':'READ_ONLY_TARGETED_ZONE_GEOMETRIC_APPLICABILITY_GEOMETRYSERVER_CONTRACT_REPAIR',
       'generated_at':datetime.now(timezone.utc).isoformat(),
       'purpose':'RESOLVE_HOW_MUCH_OF_EACH_SPECIALIZED_FIND7_PARCEL_GEOMETRICALLY_INTERSECTS_EACH_ZONING_POLYGON_WITHOUT_INFERRING_LAWFUL_USE_BUILDABILITY_SUBDIVISION_YIELD_OR_ENTITLEMENT',
       'source_checkpoint':{'find7':f7.get('version'),'unified_property_profiles':len(f7.get('profiles') or [])},
