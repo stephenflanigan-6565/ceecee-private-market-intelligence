@@ -1318,3 +1318,11 @@ def property_form_peer_context_v1_endpoint():
         return build_property_form_peer_context_v1()
     except Exception as e:
         return {'status':'error','version':'PROPERTY_FORM_PEER_CONTEXT_V1','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'v19v_touched':False,'contact_authorized':False,'outreach_touched':False}}
+
+@app.get('/api/intelligence/seasonal-residence-context-v1')
+def seasonal_residence_context_v1_endpoint():
+    try:
+        from seasonal_residence_context_v1 import build_seasonal_residence_context_v1
+        return build_seasonal_residence_context_v1()
+    except Exception as e:
+        return {'status':'error','version':'SEASONAL_RESIDENCE_CONTEXT_V1','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'v19v_touched':False,'contact_authorized':False,'outreach_touched':False}}
