@@ -1,25 +1,13 @@
-PMI FIND3 — Full-Population Causal Triage Repair
+PMI FIND4 — Unified Property-Centric FIND Chassis
 
-Deploy only these files together:
-- find2.py
-- find3.py
-- web_app.py
-
-Endpoint:
-/api/intelligence/find3
+Deploy these files together into the existing DigitalOcean app.
+Endpoint: /api/intelligence/find4
 
 Purpose:
-- FIND2 still evaluates the full WHB residential universe and keeps its operator endpoint compact.
-- FIND3 now requests FIND2's complete in-memory candidate population and causally triages every discovered land/property-utilization candidate before any display sampling.
-- FIND3 endpoint returns full coverage/state/family counts plus deterministic examples (up to 3 per causal family), avoiding a giant operator payload.
-- A future FIND integration may call build_find3(include_all_profiles=True) for the complete machine handoff.
+- Preserve FIND1 assessment/research-router history.
+- Consume FIND3 full-population causal triage.
+- Union independent routes by parcel ID.
+- Allow land-only properties to enter FIND without seller-intent inference.
+- Preserve closed routes as memory; route kill never equals property kill.
 
-Expected live proof:
-- scope.find2_whole_market_candidate_count = 153 (assuming unchanged data)
-- scope.triaged_candidate_count = 153
-- scope.complete_population_coverage = true
-- summary.coverage_complete = true
-- profile_payload.complete = false on the public endpoint by design; this refers only to display sampling, not triage coverage.
-
-Guards:
-READ ONLY. No writes, schema changes, seller scoring/ranking/intent, contact authorization, outreach, investigation-state changes, V19V changes, or reopening of closed Class-210 assessment routes.
+Read-only. No database writes. No V19V changes. No outreach/contact authorization.

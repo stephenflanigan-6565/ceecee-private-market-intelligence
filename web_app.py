@@ -1414,3 +1414,11 @@ def find3_endpoint():
         return jsonify(build_find3()), 200
     except Exception as e:
         return jsonify({'status':'error','version':'FIND3','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'schema_changes':False,'investigate_state_touched':False,'v19v_touched':False,'seller_qualification_changes':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False}}), 200
+
+@app.get('/api/intelligence/find4')
+def find4_endpoint():
+    try:
+        from find4 import build_find4
+        return jsonify(build_find4()), 200
+    except Exception as e:
+        return jsonify({'status':'error','version':'FIND4','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'schema_changes':False,'investigate_state_touched':False,'v19v_touched':False,'seller_qualification_changes':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False,'closed_class_210_routes_reopened':False}}), 200
