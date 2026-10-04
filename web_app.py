@@ -1246,3 +1246,24 @@ def property_anomaly_lab_v1_route():
                         "investigate_state_touched":False,"v19v_touched":False,"seller_qualification_changes":False,
                         "seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False,
                         "contact_authorized":False,"outreach_touched":False}}), 200
+
+
+@app.get("/api/intelligence/property-anomaly-lab-v1-1")
+def api_property_anomaly_lab_v1_1():
+    try:
+        from property_anomaly_lab_v1_1 import build_property_anomaly_lab_v1_1
+        return jsonify(build_property_anomaly_lab_v1_1())
+    except Exception as e:
+        return jsonify({
+            "status":"error",
+            "version":"PROPERTY_ANOMALY_LAB_V1_1",
+            "error":str(e),
+            "database_writes":0,
+            "guards":{
+                "database_writes":False,"external_calls":False,"schema_changes":False,
+                "investigate_state_touched":False,"v19v_touched":False,
+                "seller_qualification_changes":False,"seller_intent_inferred":False,
+                "seller_scoring":False,"overall_ranking":False,
+                "contact_authorized":False,"outreach_touched":False
+            }
+        }), 500
