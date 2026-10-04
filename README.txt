@@ -1,21 +1,9 @@
-PMI FIND10 — Targeted Property-Form Fact Test
+PMI FIND11 — Independent Redevelopment-Halo Discovery Experiment
 
-Purpose
-- Continue from promoted FIND9 property-intelligence chassis.
-- Query ONE already-available authoritative Town parcel field (PROP_TYPE).
-- Scope ONLY to existing FIND9 TARGETED_FACT_REQUIRED cases.
+Purpose: test OU-023 / OU-024 as a genuinely independent discovery rail using existing year-built evidence plus the already-proven Town TaxParcels coordinate source.
 
-Decision boundary
-- This is not generic enrichment and does not open a new data hunt.
-- A returned PROP_TYPE is one property-form fact only.
-- It does not prove vacancy, buildability, entitlement, lawful use, or seller intent.
-- Missing/ambiguous data does not hold PMI back. If the fact is material and still unresolved,
-  retain the targeted/human-verification need; otherwise continue.
+This is an observability experiment, not a seller model and not a property ranking. Thresholds are research thresholds only. No inference of seller intent, obsolescence, entitlement, buildability, or economic feasibility.
 
-Endpoint
-/api/intelligence/find10
+The test succeeds only if the spatial+temporal rail identifies meaningful properties not already explained by existing FIND9 routes. If it does not, kill/revise the rail without adding another dataset.
 
-Protected
-- FIND9 logic preserved.
-- V19V untouched.
-- No writes, scoring, ranking, seller qualification, contact, or outreach.
+Endpoint: /api/intelligence/find11
