@@ -1,14 +1,16 @@
-CANONICAL NAME: API Intelligence Property Anomaly Explainer v1
+CANONICAL NAME: API Intelligence Property Research Router v1
 
-PURPOSE
-Explain/kill the 87 A4 land-vs-improvement assessment anomalies found by Property Anomaly Lab v1.1 using existing physical-property context before any new source or human review.
+Purpose:
+Route surviving Property Anomaly Explainer cases to the single highest-information-value factual question before adding a source or creating bulk human review.
 
-CHANGED FILES ONLY
-1. web_app.py
-2. property_anomaly_explainer_v1.py
+Key rules:
+- Read only. Zero database writes.
+- V19V untouched.
+- No seller score, seller intent, ranking, contact, or outreach.
+- Data-quality/semantic uncertainty is never treated as opportunity evidence.
+- Missing information is nonblocking.
+- NEEDS_CEECEE_VERIFICATION remains a valid exception route before marketing/contact when a material fact cannot be resolved by machine research.
+- Machine research is preferred before human review.
 
-ENDPOINT
-/api/intelligence/property-anomaly-explainer-v1
-
-GUARDS
-READ ONLY. No DB writes. No V19V changes. No seller qualification/scoring. No contact/outreach authority. Missing information is nonblocking. NEEDS_CEECEE_VERIFICATION is an allowed research disposition for worthwhile cases that cannot be resolved automatically; it is not contact authorization.
+Endpoint:
+/api/intelligence/property-research-router-v1

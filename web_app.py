@@ -1276,3 +1276,12 @@ def api_property_anomaly_explainer_v1():
     except Exception as e:
         return jsonify({"status":"error","version":"PROPERTY_ANOMALY_EXPLAINER_V1","error_type":type(e).__name__,"error":str(e)[:1200],"database_writes":0,
             "guards":{"database_writes":False,"external_calls":False,"schema_changes":False,"investigate_state_touched":False,"v19v_touched":False,"seller_qualification_changes":False,"seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False,"contact_authorized":False,"outreach_touched":False}}), 200
+
+@app.get("/api/intelligence/property-research-router-v1")
+def api_property_research_router_v1():
+    try:
+        from property_research_router_v1 import build_property_research_router_v1
+        return jsonify(build_property_research_router_v1()), 200
+    except Exception as e:
+        return jsonify({"status":"error","version":"PROPERTY_RESEARCH_ROUTER_V1","error_type":type(e).__name__,"error":str(e)[:1200],"database_writes":0,
+            "guards":{"database_writes":False,"external_calls":False,"schema_changes":False,"investigate_state_touched":False,"v19v_touched":False,"seller_qualification_changes":False,"seller_intent_inferred":False,"seller_scoring":False,"overall_ranking":False,"contact_authorized":False,"outreach_touched":False}}), 200
