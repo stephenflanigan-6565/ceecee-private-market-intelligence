@@ -20,13 +20,19 @@ Open a property and read why it surfaced, the next useful check, and the retaine
 
 Use **Your workflow** to set a stage and record the next step. These notes preserve work without becoming verified seller evidence. Case history keeps earlier notes and changes.
 
-Use **Sources & observations** to capture a specific property fact or an attributed public/authorized statement. Keep its source reference and date. Mark it verified only after checking it. Source links are locators; PMI does not automatically read or fetch them. State whether a statement actually refers to this property. Buying interest or a change in circumstances alone does not establish a sale obligation.
+Use **Sources & observations** to capture a specific property fact or an attributed public/authorized statement. Keep its source reference and date. Mark it verified only after checking it. Operator-supplied links are locators. CC now checks the official parcel, ownership and transfer sources for the current pilot through its separate, bounded researcher; arbitrary pasted links are not fetched. State whether a statement actually refers to this property. Buying interest or a change in circumstances alone does not establish a sale obligation.
 
 When the engine has an explanation, use **Record your finding about this explanation**. Select the outcome and how it was checked, then preserve the supporting details. Confirming a seller's reason requires the owner's own disclosure. Verified negative findings hold the same explanation on later analyses; duplicate captures do not erase that result.
 
 Correct source records by entering the earlier evidence record reference. Original and corrected entries remain in history. **Download workspace record** provides a private JSON backup containing imports, cases, evidence, reviewed findings, and reasoning snapshots. Treat that file as owner/property information.
 
 Seller inquiries can be empty when evidence is insufficient. All imported properties remain accessible through **All properties**, including held explanations. This workflow sends no marketing or owner contact.
+
+## CC automatic pilot research
+
+CC now checks the current five-property pilot in the background using official Suffolk parcel, owner and recorded transfer APIs. Open **Research pilot** for progress and pause/resume controls, and **CC research** on a property for source status, checked timestamps, retained records, changes and next checks. **Check pilot now** queues a check; reload to see progress. Existing review stages, notes, hypotheses and verified findings remain unchanged by retrieval. These records establish factual context, not a seller's objective.
+
+The initial complete check provides the source baseline. Later successful checks compare against the last complete source result. Failed checks retain earlier evidence and show that the new check failed. Successful checks are due about daily; failures retry after six hours. The existing PostgreSQL schedule and a global lease coordinate the two app processes, keep acquisition sequential, and preserve pauses across deployments. No new API key or paid worker is required. See CC_RESEARCH_GUIDE.md for the research workflow and limits.
 
 ## Local preview
 

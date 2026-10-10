@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 import uuid
+from datetime import datetime, timezone
 from urllib.parse import urlsplit
 
 from flask import Blueprint, Response, g, redirect, render_template, request, url_for
@@ -29,7 +30,7 @@ def source_url(value):
     return None
 
 
-def create_blueprint(source_loader, *, store_factory=None, access_key=None, allow_http=False):
+def create_blueprint(source_loader, *, store_factory=None, research_factory=None, access_key=None, allow_http=False):
     key = access_key if access_key is not None else os.getenv("PMI_REVIEW_ACCESS_KEY", "")
     configured = isinstance(key, str) and len(key) >= 24
     signing_key = hashlib.sha256(("PMI_OPERATOR_V1:" + key).encode()).hexdigest()
@@ -38,13 +39,55 @@ def create_blueprint(source_loader, *, store_factory=None, access_key=None, allo
     actor = os.getenv("PMI_REVIEW_OPERATOR_NAME", "PMI operator")[:128]
     bp = Blueprint("pmi_review", __name__, url_prefix="/review", template_folder="templates", static_folder="static")
 
-    def store():
-        if store_factory:
-            return store_factory()
+    def database_dsn():
         dsn = os.getenv("DATABASE_URL", "")
         if not dsn or (not allow_http and not dsn.startswith(("postgres://", "postgresql://"))):
             raise RuntimeError("Persistent review database is not configured.")
-        return ReviewStore(dsn)
+        return dsn
+
+    def store():
+        if store_factory:
+            return store_factory()
+        return ReviewStore(database_dsn())
+
+    def research_store(review_store=None):
+        if research_factory:
+            return research_factory()
+        # Explicit local preview stores share their durable database. Fake
+        # review stores used by callers need not provide research storage.
+        dsn = getattr(review_store, "dsn", None) if store_factory else database_dsn()
+        if not dsn:
+            return None
+        from pmi_research_store import ResearchStore
+        return ResearchStore(dsn)
+
+    def research_read(review_store, case_id=None):
+        empty = {"available": False, "enabled": False, "running": None, "recent_runs": []}
+        try:
+            selected = research_store(review_store)
+            if selected is None:
+                return empty, None, ""
+            status = selected.status()
+            if not isinstance(status, dict):
+                raise ValueError("Invalid research status")
+            latest = selected.latest(case_id) if case_id else None
+            if latest is not None and not isinstance(latest, dict):
+                raise ValueError("Invalid research result")
+            if latest is not None:
+                latest = dict(latest)
+                current = {source.get("source_key") for source in latest.get("sources", [])
+                           if isinstance(source, dict) and source.get("status") in {"SUCCESS", "EMPTY"}
+                           and source.get("complete") is True}
+                # A successful current observation already appears above. Keep
+                # older good observations visible when the new fetch failed or
+                # is still in progress, without duplicating current records.
+                latest["retained_sources"] = [source for source in latest.get("retained_sources", [])
+                                             if isinstance(source, dict) and source.get("source_key") not in current]
+            return {**empty, **status}, latest, ""
+        except Exception:
+            # The review remains usable when acquisition storage is unavailable.
+            # Never expose a database URL, source exception, or credentials.
+            return empty, None, "CC research status is temporarily unavailable. Your saved review work remains available."
 
     def csrf(identity):
         return hmac.new(signing_key.encode(), ("csrf:" + identity["nonce"]).encode(), hashlib.sha256).hexdigest()
@@ -75,6 +118,18 @@ def create_blueprint(source_loader, *, store_factory=None, access_key=None, allo
     @bp.app_template_filter("source_url")
     def source_filter(value):
         return source_url(value)
+
+    @bp.app_template_filter("research_time")
+    def research_time(value):
+        if not isinstance(value, str):
+            return "Time unavailable"
+        try:
+            moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if moment.tzinfo is not None:
+                return moment.astimezone(timezone.utc).strftime("%b %d, %Y at %H:%M UTC")
+        except ValueError:
+            pass
+        return value[:128]
 
     @bp.before_request
     def guard():
@@ -143,7 +198,9 @@ def create_blueprint(source_loader, *, store_factory=None, access_key=None, allo
         ids = {name: str(uuid.uuid4()) for name in ("state", "evidence", "public_statement", "pilot")}
         for hypothesis in item.get("analysis", {}).get("hypotheses", []):
             ids["review_" + hypothesis["hypothesis_id"]] = str(uuid.uuid4())
+        research_status, research_result, research_error = research_read(review_store, case_id)
         return render_template("pmi_review/case.html", **context(ready=True, case=item, error=error, counts=counts,
+                               research_status=research_status, research_result=research_result, research_error=research_error,
                                event_ids=ids, previous_case=ordered[pos-1] if pos else None,
                                next_case=ordered[pos+1] if pos+1 < len(ordered) else None)), status
 
@@ -153,9 +210,7 @@ def create_blueprint(source_loader, *, store_factory=None, access_key=None, allo
                 "research": sum(c.get("lane") == "PROPERTY_RESEARCH" for c in cases),
                 "held": sum(c.get("lane") == "HELD" for c in cases)}
 
-    @bp.get("")
-    @bp.get("/")
-    def index():
+    def workspace_page(*, error="", status=200):
         try:
             review_store = store()
             if not review_store.ready():
@@ -176,10 +231,17 @@ def create_blueprint(source_loader, *, store_factory=None, access_key=None, allo
             if q:
                 shown = [c for c in shown if q.casefold() in " ".join(str(c.get(k) or "") for k in
                          ("property_address", "parcel_id", "why", "owner_names")).casefold()]
+            research_status, _, research_error = research_read(review_store) if view == "pilot" else ({}, None, "")
             return render_template("pmi_review/index.html", **context(ready=True, cases=shown, counts=counts,
-                                   active_view=view, filter=view, query=q))
+                                   active_view=view, filter=view, query=q, error=error,
+                                   research_status=research_status, research_error=research_error)), status
         except Exception:
             return unavailable()
+
+    @bp.get("")
+    @bp.get("/")
+    def index():
+        return workspace_page()
 
     @bp.post("/login")
     def login():
@@ -242,6 +304,63 @@ def create_blueprint(source_loader, *, store_factory=None, access_key=None, allo
         except Exception:
             return unavailable()
 
+    def research_failure(case_id=None, status=503):
+        message = "CC research is temporarily unavailable. Your saved review work remains available."
+        try:
+            return case_page(case_id, error=message, status=status) if case_id else workspace_page(error=message, status=status)
+        except Exception:
+            return unavailable()
+
+    class ResearchInputError(ValueError):
+        pass
+
+    @bp.post("/research/toggle")
+    def research_toggle():
+        try:
+            value = request.form.get("enabled", "").lower()
+            if value not in {"on", "true", "1", "off", "false", "0"}:
+                raise ResearchInputError("Choose whether CC research should run or pause.")
+            selected = research_store(store())
+            if selected is None or not selected.ready():
+                return research_failure(status=409)
+            selected.set_enabled(value in {"on", "true", "1"}, actor)
+            message = "CC research resumed. Due pilot checks will run in the background." if checked("enabled") else "CC research paused. Saved findings remain available."
+            return redirect(url_for("pmi_review.index", view="pilot", message=message), code=303)
+        except ResearchInputError as exc:
+            return workspace_page(error=str(exc), status=400)
+        except Exception:
+            return research_failure()
+
+    @bp.post("/research/run")
+    def research_run():
+        case_id = request.form.get("case_id", "").strip() or None
+        try:
+            if case_id is not None and len(case_id) > 128:
+                raise ResearchInputError("The property reference is too long.")
+            review_store = store()
+            if case_id:
+                item = review_store.case(case_id)
+                if item is None:
+                    return case_page(case_id)
+                if not item.get("pilot") or item.get("state") == "DISMISSED":
+                    raise ResearchInputError("Add this property to the research pilot before requesting a check. Set-aside cases are not checked.")
+            selected = research_store(review_store)
+            if selected is None or not selected.ready():
+                return research_failure(case_id, status=409)
+            result = selected.request_run(case_id, actor)
+            count = result.get("request_count", 0) if isinstance(result, dict) else 0
+            if count:
+                message = "CC's check is queued. Reload the page shortly to see its progress. Paused research waits until you resume it."
+            else:
+                message = "No new check was queued. A recent check may still be running or within the five-minute cooldown."
+            return go_case(case_id, message) if case_id else redirect(url_for("pmi_review.index", view="pilot", message=message), code=303)
+        except KeyError:
+            return case_page(case_id) if case_id else workspace_page(error="This pilot property was not found.", status=404)
+        except ResearchInputError as exc:
+            return case_page(case_id, error=str(exc), status=400) if case_id and len(case_id) <= 128 else workspace_page(error=str(exc), status=400)
+        except Exception:
+            return research_failure(case_id if case_id and len(case_id) <= 128 else None)
+
     @bp.post("/cases/<case_id>/state")
     def update_state(case_id):
         return mutation(case_id, lambda s: s.set_state(case_id, request.form.get("state", ""),
@@ -302,7 +421,16 @@ def create_blueprint(source_loader, *, store_factory=None, access_key=None, allo
     @bp.get("/export")
     def export():
         try:
-            payload = store().export_payload()
+            review_store = store()
+            payload = review_store.export_payload()
+            try:
+                selected = research_store(review_store)
+                if selected is not None and selected.ready():
+                    payload["research"] = selected.export_payload()
+            except Exception:
+                # Keep the existing review backup usable during a research
+                # storage outage and state that the research copy is missing.
+                payload["research"] = {"status": "UNAVAILABLE", "message": "Research records could not be included in this backup."}
             return Response(json.dumps(payload, ensure_ascii=False, allow_nan=False, indent=2),
                             mimetype="application/json", headers={"Content-Disposition": "attachment; filename=PMI-review-backup.json"})
         except Exception:
