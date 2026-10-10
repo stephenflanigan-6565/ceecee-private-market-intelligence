@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify, render_template_string
+from flask import Flask, jsonify, render_template_string, request
 from operator_report import build_snapshot
 from cloud_memory_check import verify_persistence
 from universe_collector import probe as probe_westhampton_universe, populate as populate_westhampton_universe
@@ -1419,7 +1419,7 @@ def find3_endpoint():
 def find4_endpoint():
     try:
         from find4 import build_find4
-        return jsonify(build_find4()), 200
+        return jsonify(build_find4(include_all_profiles=request.args.get('include_all_profiles') == 'true')), 200
     except Exception as e:
         return jsonify({'status':'error','version':'FIND4','error_type':type(e).__name__,'error':str(e)[:1200],'database_writes':0,'guards':{'database_writes':False,'external_calls':False,'schema_changes':False,'investigate_state_touched':False,'v19v_touched':False,'seller_qualification_changes':False,'seller_intent_inferred':False,'seller_scoring':False,'overall_ranking':False,'contact_authorized':False,'outreach_touched':False,'closed_class_210_routes_reopened':False}}), 200
 
