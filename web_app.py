@@ -50,6 +50,26 @@ def _review_source_export():
 
 app.register_blueprint(create_pmi_review_blueprint(_review_source_export))
 
+# The small pilot researcher shares the current app. Its persistent database
+# lease permits only one acquisition at a time across Gunicorn processes.
+# This starts outside requests; GET routes remain read-only.
+_research_worker = None
+_research_enabled = (
+    os.getenv("CEECEE_ENV", "") == "production"
+    and os.getenv("DATABASE_URL", "").startswith(("postgres://", "postgresql://"))
+    and len(os.getenv("PMI_REVIEW_ACCESS_KEY", "")) >= 24
+    and os.getenv("PMI_RESEARCH_ENABLED", "1").lower() not in {"0", "false", "off", "no"}
+)
+if _research_enabled:
+    try:
+        from pmi_research_store import ResearchStore
+        from pmi_research_worker import start_worker
+        _research_worker = start_worker(lambda: ResearchStore(os.environ["DATABASE_URL"]))
+    except Exception as error:
+        # A researcher startup failure must not break the operator workspace
+        # or expose a connection string in public diagnostics.
+        app.logger.warning("Pilot researcher startup unavailable (%s)", type(error).__name__)
+
 PAGE = """
 <!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -80,7 +100,23 @@ small{color:#666}
 
 @app.get("/health")
 def health():
-    return jsonify({"status":"ok","service":"ceecee-private-market-intelligence"}), 200
+    research = {"configured": _research_enabled, "started": _research_worker is not None}
+    if _research_worker is not None:
+        try:
+            raw = _research_worker.health()
+            # Operational values only: never include case IDs, addresses,
+            # owner/source records, credentials or exception messages.
+            for key in ("alive", "last_poll_at", "last_outcome", "last_completed_at", "completed_runs"):
+                value = raw.get(key)
+                if value is None or isinstance(value, (bool, int, float)):
+                    research[key] = value
+                elif key == "last_outcome" and value in {"IDLE", "SUCCESS", "PARTIAL", "ERROR", "UNSUPPORTED", "PAUSED", "UNAVAILABLE", "INTERRUPTED"}:
+                    research[key] = value
+                elif key in {"last_poll_at", "last_completed_at"} and isinstance(value, str) and len(value) <= 40:
+                    research[key] = value
+        except Exception:
+            research["alive"] = False
+    return jsonify({"status":"ok","service":"ceecee-private-market-intelligence", "background_research": research}), 200
 
 @app.get("/api/cloud-memory-check")
 def cloud_memory_check():
