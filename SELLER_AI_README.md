@@ -1,117 +1,159 @@
-# Seller AI reasoning and review memory
+# PMI internal intelligence and review memory
 
-This draft adds an AI reasoning core over existing PMI profiles. It generates
-creative opportunity hypotheses, challenges them against cited observations,
-and carries reviewed outcomes into later model context. The vocabulary is
-expandable; the user clarified that no final list of seller reasons was adopted.
+PMI reasons inside its own application environment using supplied property
+facts, public/authorized information, explicit relationships, and reviewed cases.
+The engine has no external model client, AI credential, model download, or paid
+AI dependency. Python's standard library is sufficient for local analysis.
 
-Each hypothesis records the circumstance, possible seller reason, useful agent
-contribution, supporting observations, competing explanations, one consequential
-next check, and what would disprove it. The challenge pass can hold an idea in
-machine research or reject that explanation without erasing independent ideas.
-Model outputs never authorize contact or establish confirmed seller intent.
+The user clarified that the intended system is PMI's own persistent reasoning
+and memory. No fixed seller-reason list was adopted. The implemented pattern
+vocabulary is expandable; initial examples do not define its whole universe.
 
-An address supports a human handoff; unknown ownership remains nonblocking.
-Price, presumed equity, missing fields, and repeated signals do not qualify an
-opportunity. The model's two passes are reasoning checks, not independent factual
-corroboration. Citation validation proves that a cited observation was supplied;
-the model can still misunderstand its meaning. Realtor review remains essential.
+## How the engine works
 
-Packets also link properties with the same reported owner name using anonymous
-aliases. This enables portfolio hypotheses without treating name matches as
-verified common control. It does not build personal demographic profiles.
-Known owner names and property addresses are removed from model context, including
-their occurrences in source prose. Exact source observations and addresses remain
-in local records for the operator. This is targeted redaction, not a general
-guarantee that arbitrary source text contains no personal information.
+Each property retains source observations, stable citations, route decisions,
+and an immutable case revision. The engine matches implemented or explicitly
+reviewed patterns, checks contradictory observations, and records a possible
+seller circumstance, competing explanations, useful agent service, and the next
+consequential check. A closed explanation's observations cannot silently
+reopen that explanation. Independently supported alternatives remain possible.
 
-## Learning behavior
+A completed project with an unused property is one initial example. Additional
+patterns can be registered after review. Generic price, apparent equity, age,
+family details, missing information, or an assessment anomaly do not establish
+a seller opportunity. Unknown ownership remains nonblocking for a supported
+address-based property investigation.
 
-Analysis snapshots and review events are append-only. A review references an
-exact case revision and hypothesis, identifies its reviewer and evidence method,
-and records a finding. Replayed requests do not overwrite history or inflate
-pattern counts. Corrections append another event and retain the previous finding.
+This is a custom evidence and case-based expert system. It reasons within the
+patterns and input contracts implemented here. It does not provide unrestricted
+natural-language understanding, autonomously invent verified facts, or train
+general language-model weights.
 
-Only verified reviews influence retrieved pattern lessons. Each property
-contributes its latest verified outcome to a pattern, so repeated analyses of one
-property cannot manufacture a successful pattern. Reviewer prose and personal
-details stay out of model lessons. The model receives both useful outcomes and
-false positives; a prior success is not proof about another owner's intent.
+## Public and social intelligence in both directions
 
-An operator's inference cannot be recorded as a confirmed owner reason:
-SELLER_REASON_CONFIRMED requires OWNER_DISCLOSURE. That is a trusted reviewer
-attestation, not a machine verification of the conversation. There is no public
-review-write endpoint in this draft.
+The optional `public_information` input connects:
+- A property to a verified owner/controller and the person's attributed statement.
+- A person expressing buying interest to properties linked through ownership
+  evidence, retaining the question of whether any sale is involved.
 
-This is learning through persistent feedback retrieval. Model weights are not
-retrained. The lessons currently report empirical outcomes, not calibrated
-probabilities, seller scores, or automatically adopted rules.
+Source quotations, source locators, dates, claimed subjects, identity links, and
+review attestations remain attached. Matching a name alone does not establish
+identity or current control. Ambiguous links remain research. An explicit sale
+statement requires a current, attributed, source-attested statement and a
+specific property reference before it supports an owner-specific review.
 
-## Running the draft
+Buying interest does not establish a sale obligation. Announced life events
+and other circumstances remain context. Locations can support comparisons;
+age or family attributes do not become seller-qualification rules.
 
-Preparing packets is offline and makes no model calls:
+The input consumes already captured public or authorized records. It does not
+scrape social networks, log into accounts, fetch supplied URLs, or claim a
+source has been read merely because its URL was supplied. Statement labels and
+verified flags are trusted operator/source attestations, not proof created by
+the parser. Free-form posts are not classified automatically by this draft.
+
+## Learning that can be inspected
+
+Append-only memory retains exact reasoning snapshots, review events, and
+corrections. A verified finding is linked to its case revision and hypothesis.
+One property contributes its latest verified outcome to a pattern, so replayed
+requests or many analyses of one property cannot inflate learned counts.
+
+Comparable reviewed cases carry their supporting observations and snapshot
+references into future reasoning. Outcomes include useful investigations,
+false positives, source errors, and disclosed seller reasons. Earlier success
+does not establish a new owner's intent.
+
+Pattern suggestions derive from reviewed evidence conditions and outcomes.
+They remain proposals until explicitly reviewed and registered. Approved
+definitions participate in later analyses; unverified proposals do not qualify
+properties. Corrections preserve older definitions and findings. This makes
+learning durable and reviewable rather than silent score changes.
+
+The engine distinguishes a possible property opportunity from an attributed
+expressed sale plan. Neither authorizes contact. Confirmed seller reasons in
+review memory require a reviewer-attested owner disclosure.
+
+## Running locally
+
+Prepare all supplied profiles without writes or external calls:
 
     python seller_ai.py packets --input existing-find4.json --output packets.json
 
-Analyze one explicitly selected case with a configured provider:
+Analyze the full batch offline; every case is retained:
 
-    python seller_ai.py analyze --input existing-find4.json --case-id CASE_ID --memory reviews.db --output analysis.json
+    python seller_ai.py analyze --input existing-find4.json --output results.json
 
-The process requires OPENAI_API_KEY and PMI_REASONING_MODEL in its environment.
-Credentials are never supplied in input JSON, committed, or printed. Each
-analysis makes two model calls, unless the proposal pass returns no hypotheses.
-The provider adapter uses OpenAI Responses with strict structured output and
-store: false. It does not fetch websites, refresh property sources, or run
-model-suggested commands. Provider charges apply only when analysis is invoked.
+Enable persistent local memory and a bounded five-property review batch:
 
-The selected model must support Responses structured output. Model choice is
-explicit rather than hardcoded. API details were checked against the
-[OpenAI structured-output guide](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses).
+    python seller_ai.py analyze --input existing-find4.json --memory reviews.db --review-limit 5 --output results.json
 
-A review JSON uses these fields:
+An optional `--case-id CASE_ID` limits analysis to that existing case.
+`--as-of YYYY-MM-DD` makes public-statement date checks reproducible.
+Overflow stays in a review backlog; weak context stays in machine research.
+The five-property cap controls operator workload, not a universal signal count.
+
+Review JSON references stored analysis/hypothesis identifiers:
 
     {
       "event_id": "operator-assigned-idempotency-key",
       "analysis_id": "stored-analysis-id",
-      "hypothesis_id": "H1",
+      "hypothesis_id": "stored-hypothesis-id",
       "actor": "realtor",
       "outcome": "USEFUL_INVESTIGATION",
       "method": "OPERATOR_REVIEW",
-      "detail": "The observed project status justified a focused inquiry.",
+      "detail": "Verified project circumstances warranted the focused inquiry.",
       "verified": true
     }
 
-Store it and read the learned outcomes:
-
     python seller_ai.py review --input review.json --memory reviews.db
     python seller_ai.py lessons --memory reviews.db
+    python seller_ai.py suggest-patterns --memory reviews.db
 
-SQLite is for explicitly selected local development. The PostgreSQL adapter
-requires the supplied separate-table migration before use; it never changes the
-legacy ledger or creates production tables automatically.
+Pattern registration requires a reviewed structured definition and actor/event
+identity. It never runs a command contained in source data. SQLite is explicit
+local development storage. The PostgreSQL adapter requires the separate
+migration to be applied before use and does not create production tables.
 
-## Verification and current limits
+## Activation and validation limits
 
-Sixty-nine offline tests passed: 25 new reasoning/memory checks and 44 existing
-source-profile evaluator checks. The new tests exercise citation fabrication, challenge
-coverage, unsupported ideas, contradictions, unknown owners, missing addresses,
-case-specific identity redaction, reported-name links, persistent memory,
-idempotency, corrections, verified-only learning, and provider failures.
+The reasoning core is a draft, not an activated Flask endpoint or worker.
+Source capture/annotation adapters, protected operator access, and production
+memory integration remain. The supplied memory migration has not been applied
+to the live database. PostgreSQL operation remains unverified.
+
+All actual FIND4 profiles are used as offline input. Actual results and owner
+data stay outside the source PR and package. The current export has no public
+statement records, so social paths are verified with synthetic fixtures. An
+empty review batch means the implemented seller-circumstance patterns did not
+match supplied evidence; it does not establish that the properties cannot sell.
 
     python -m unittest discover -s tests -v
 
-Packets were prepared successfully for all 194 current FIND4 profiles, without a
-model call. Those profiles contain 147 supported property-research routes,
-28 research hypotheses, and 19 closed-explanation cases; seller intent is unknown
-for all 194. These are inputs for an intelligence experiment, not 194 seller leads.
+Existing live routes, protected V19V, legacy evidence ledger, marketing,
+outreach, and contact permissions are unchanged by this draft.
 
-No actual model hypotheses or seller outcomes have yet been validated on that
-batch. Only synthetic model responses exercise the reasoning tests. PostgreSQL
-operation, live provider behavior, and operator workload require a controlled
-pilot. The core is not registered with Flask and has no live background worker;
-production integration must keep long model calls out of Gunicorn's default
-30-second request timeout. Provider credentials, protected operator access, and
-an explicit memory migration/worker setup are required before activation.
+## Verification record for this revision
 
-Existing application routes, protected V19V, marketing, and contact permissions
-are unchanged by this draft.
+All 139 offline tests passed and were independently rerun. Explicitly historical,
+invalid, and other-property/market facts remain in history but cannot qualify
+current opportunities. Missing dates remain visible unknowns; unknown maturity
+is not silently claimed to be verified current evidence.
+
+A reviewed negative finding holds an unchanged explanation across irrelevant
+notes, duplicate copied routes, and route-order changes. A stable evidence
+fingerprint retains relevant source context while ignoring array positions.
+New relevant source observations or an explicit reviewed correction can reopen
+an inquiry. Findings about another property never settle the new case.
+
+Approved rules can be retired with a verified pattern registration using
+`approved: false`, including the initial example. An unverified draft retirement
+cannot turn off an active rule; a later verified approval can reactivate it.
+History is preserved throughout.
+
+All 194 current profiles were retained in local append-only memory. No initial
+seller-circumstance pattern matched this export, and it has no public statements.
+The 147 existing property investigations and 28 research hypotheses remain
+available, alongside 19 closed-explanation cases. An empty new seller batch does
+not dismiss those properties. Public/social behavior is tested with synthetic
+fixtures. No external/model calls or production database writes occurred.
