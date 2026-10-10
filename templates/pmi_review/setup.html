@@ -1,0 +1,10 @@
+{% extends 'pmi_review/base.html' %}
+{% block title %}Workspace setup · PMI{% endblock %}
+{% block content %}
+<section class="entry-panel">
+  <p class="eyebrow">Workspace setup</p>
+  {% if not configured %}<h1>Your workspace<br>is safely locked.</h1><p class="page-intro">The private review area needs its access passphrase before anyone can open property records or save findings.</p><div class="entry-card"><h2>One setup step</h2><p>In DigitalOcean, add <code>PMI_REVIEW_ACCESS_KEY</code> as a secret environment variable with at least 24 characters, then redeploy the app.</p><p class="muted">Save the passphrase privately. It is used to sign in here; it does not connect an outside AI service.</p></div>
+  {% elif not ready %}<h1>Prepare your<br>review workspace.</h1><p class="page-intro">Create the dedicated storage for your property reviews, evidence, and learning history.</p><div class="entry-card"><h2>Keep your work between sessions</h2><p>This step creates only the PMI review and memory tables in the app’s configured database. Existing property research stays in place.</p>{% if actor %}<form method="post" action="{{ url_for('pmi_review.initialize') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}"><button class="button button-primary" type="submit">Prepare workspace <span aria-hidden="true">→</span></button></form>{% else %}<a class="button button-primary" href="{{ url_for('pmi_review.index') }}">Sign in to continue</a>{% endif %}</div>
+  {% else %}<h1>Your workspace<br>is ready.</h1><p class="page-intro">Open the research pilot to work through your first properties.</p><a class="button button-primary" href="{{ url_for('pmi_review.index', view='pilot') }}">Open workspace <span aria-hidden="true">→</span></a>{% endif %}
+</section>
+{% endblock %}

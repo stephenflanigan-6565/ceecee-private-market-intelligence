@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>{% block title %}PMI · Property Intelligence{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('pmi_review.static', filename='pmi_review/review.css') }}">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to workspace</a>
+  <div class="app-shell{% if not actor %} entry-shell{% endif %}">
+    <aside class="sidebar" aria-label="Workspace navigation">
+      <a class="brand" href="{{ url_for('pmi_review.index') }}" aria-label="PMI home">
+        <span class="brand-mark" aria-hidden="true">P<span>·</span></span>
+        <span class="brand-copy"><strong>PMI</strong><span>Property Intelligence</span></span>
+      </a>
+      {% if actor and ready %}
+      {% set navigation_view = active_view|default(filter|default('seller')) %}
+      <div class="nav-label">Your workspace</div>
+      <nav class="workspace-nav">
+        <a href="{{ url_for('pmi_review.index', view='seller') }}" {% if navigation_view == 'seller' %}aria-current="page"{% endif %}><span>Seller inquiries</span><span class="nav-count">{{ (counts|default({})).get('seller', 0) }}</span></a>
+        <a href="{{ url_for('pmi_review.index', view='pilot') }}" {% if navigation_view == 'pilot' %}aria-current="page"{% endif %}><span>Research pilot</span><span class="nav-count">{{ (counts|default({})).get('pilot', 0) }}</span></a>
+        <a href="{{ url_for('pmi_review.index', view='research') }}" {% if navigation_view == 'research' %}aria-current="page"{% endif %}><span>Property research</span><span class="nav-count">{{ (counts|default({})).get('research', 0) }}</span></a>
+        <a href="{{ url_for('pmi_review.index', view='held') }}" {% if navigation_view == 'held' %}aria-current="page"{% endif %}><span>Held explanations</span><span class="nav-count">{{ (counts|default({})).get('held', 0) }}</span></a>
+        <a href="{{ url_for('pmi_review.index', view='all') }}" {% if navigation_view == 'all' %}aria-current="page"{% endif %}><span>All properties</span><span class="nav-count">{{ (counts|default({})).get('all', 0) }}</span></a>
+      </nav>
+      <div class="sidebar-note"><span class="small-label">The working approach</span><p>Find a meaningful reason.<br>Check the evidence.<br>Keep what you learn.</p></div>
+      <div class="sidebar-bottom">
+        <a class="text-link" href="{{ url_for('pmi_review.export') }}">Download workspace record <span aria-hidden="true">↗</span></a>
+        <form method="post" action="{{ url_for('pmi_review.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}"><button class="text-button" type="submit">Sign out</button></form>
+      </div>
+      {% else %}
+      <div class="sidebar-note entry-note"><span class="small-label">A considered approach</span><p>Property evidence.<br>Useful next steps.<br>Experience remembered.</p></div>
+      {% if actor %}<form class="sidebar-bottom" method="post" action="{{ url_for('pmi_review.logout') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}"><button class="text-button" type="submit">Sign out</button></form>{% endif %}
+      {% endif %}
+    </aside>
+    <main id="main-content" class="main-content" tabindex="-1">
+      <div class="topline"><span>Private review workspace</span>{% if actor %}<span class="operator-label"><span class="status-dot" aria-hidden="true"></span>{{ actor }}</span>{% endif %}</div>
+      {% if message %}<div class="notice notice-success" role="status">{{ message }}</div>{% endif %}
+      {% if error %}<div class="notice notice-error" role="alert">{{ error }}</div>{% endif %}
+      {% block content %}{% endblock %}
+      <footer class="workspace-footer">PMI · Research and reviewed findings inform the next step. Outreach remains a separate decision.</footer>
+    </main>
+  </div>
+</body>
+</html>
