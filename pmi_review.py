@@ -84,7 +84,9 @@ def create_blueprint(source_loader, *, store_factory=None, access_key=None, allo
             return "The submitted review exceeds the supported size.", 413
         g.pmi_operator = load_identity() if configured else None
         if not configured:
-            return render_template("pmi_review/setup.html", **context(error="Operator access has not been configured.")), 503
+            # Configuration instructions are a valid public page. A gateway
+            # may replace an origin 503 with its own error screen.
+            return render_template("pmi_review/setup.html", **context(error="Operator access has not been configured.")), 200 if request.method == "GET" else 503
         if request.endpoint == "pmi_review.login":
             return None
         if not g.pmi_operator:
