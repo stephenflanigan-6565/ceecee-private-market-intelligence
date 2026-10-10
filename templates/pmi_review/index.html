@@ -1,0 +1,42 @@
+{% extends 'pmi_review/base.html' %}
+{% block title %}Your workspace · PMI{% endblock %}
+{% block content %}
+{% set view = active_view|default(filter|default('seller')) %}
+{% set titles = {'seller': 'Seller inquiries', 'pilot': 'Your research pilot', 'research': 'Property research', 'held': 'Held explanations', 'all': 'All properties'} %}
+{% set descriptions = {'seller': 'Source-backed seller possibilities, ready for a meaningful next check.', 'pilot': 'A small set of properties to investigate, review, and learn from together.', 'research': 'Property findings worth checking. A reason to sell still needs evidence.', 'held': 'Keep the record of closed, contradicted, or unresolved explanations.', 'all': 'Every imported property remains available, including incomplete and held cases.'} %}
+<header class="page-header">
+  <div><p class="eyebrow">Intelligence, put to work</p><h1>{{ titles.get(view, 'Your workspace') }}</h1><p class="page-intro">{{ descriptions.get(view, descriptions['all']) }}</p></div>
+  <form method="post" action="{{ url_for('pmi_review.import_cases') }}" class="header-action"><input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}"><button class="button button-secondary" type="submit">{% if (counts|default({})).get('all', 0) %}Refresh property records{% else %}Load property records{% endif %}</button><span class="form-hint">Keeps your notes and earlier evidence.</span></form>
+</header>
+{% if view == 'pilot' %}
+<div class="guidance-strip"><span class="step-circle" aria-hidden="true">1</span><div><strong>Start with one property.</strong><p>Read why it surfaced, check a useful source, and save what you find. The pilot holds up to five research cases; they are not assumed sellers.</p></div></div>
+{% endif %}
+<form method="get" action="{{ url_for('pmi_review.index') }}" class="search-bar" role="search">
+  <input type="hidden" name="view" value="{{ view }}">
+  <div class="search-field"><label class="visually-hidden" for="property-search">Search property address, owner, or parcel</label><span aria-hidden="true">⌕</span><input id="property-search" type="search" name="q" value="{{ query|default('') }}" placeholder="Search address, owner, or parcel…"></div>
+  <button class="button button-secondary" type="submit">Search</button>
+  {% if query %}<a class="text-link" href="{{ url_for('pmi_review.index', view=view) }}">Clear</a>{% endif %}
+</form>
+<div class="list-heading"><span>{{ cases|default([])|length }} {% if cases|default([])|length == 1 %}property{% else %}properties{% endif %}{% if query %} matching “{{ query }}”{% endif %}</span><span class="muted">Review at your pace</span></div>
+{% if cases %}
+<div class="property-list">
+{% for item in cases %}
+<article class="property-card{% if item.state == 'COMPLETE' %} property-complete{% endif %}">
+  <div class="property-card-top"><div><div class="tag-row"><span class="badge {% if item.lane == 'SELLER_REVIEW' %}badge-teal{% elif item.lane == 'HELD' %}badge-muted{% else %}badge-blue{% endif %}">{% if item.lane == 'SELLER_REVIEW' %}Seller inquiry{% elif item.lane == 'HELD' %}Held explanation{% else %}Property research{% endif %}</span>{% if item.pilot %}<span class="badge badge-outline">Pilot</span>{% endif %}</div><h2><a href="{{ url_for('pmi_review.case_detail', case_id=item.case_id) }}">{{ item.property_address or 'Address not yet supplied' }}</a></h2><p class="property-meta">{% if item.market_code %}{{ item.market_code }}{% endif %}{% if item.parcel_id %}{% if item.market_code %}<span aria-hidden="true"> · </span>{% endif %}Parcel {{ item.parcel_id }}{% endif %}{% if not item.market_code and not item.parcel_id %}Property identity needs a check{% endif %}</p></div><span class="stage stage-{{ item.state|default('NEW')|lower }}">{{ item.state|default('NEW')|replace('_', ' ')|title }}</span></div>
+  <p class="card-reason">{{ item.why or 'Review the retained property findings and identify the next useful check.' }}</p>
+  {% if item.owner_names %}<p class="owner-line"><span class="small-label">Reported owner</span> {{ item.owner_names|join(', ') }} <span class="muted">· verify identity</span></p>{% endif %}
+  <div class="card-next"><div><span class="small-label">Next useful check</span><p>{{ item.next_check or 'Review source evidence and record what would resolve the current question.' }}</p></div><a class="button button-open" href="{{ url_for('pmi_review.case_detail', case_id=item.case_id) }}">Open property <span aria-hidden="true">→</span></a></div>
+</article>
+{% endfor %}
+</div>
+{% else %}
+<section class="empty-state" aria-labelledby="empty-title">
+  <div class="empty-icon" aria-hidden="true">◇</div>
+  {% if query %}<h2 id="empty-title">No matching properties in this view</h2><p>Try a shorter address, an owner name, or a parcel number. All imported cases are available in All properties.</p><a class="button button-primary" href="{{ url_for('pmi_review.index', view='all', q=query) }}">Search all properties</a>
+  {% elif view == 'seller' %}<h2 id="empty-title">The evidence comes first</h2><p>No supported seller inquiry is ready here yet. Start with the research pilot, check the circumstances, and preserve what you learn.</p><a class="button button-primary" href="{{ url_for('pmi_review.index', view='pilot') }}">Open the research pilot <span aria-hidden="true">→</span></a>
+  {% elif view == 'pilot' %}<h2 id="empty-title">Your pilot starts with property evidence</h2><p>Load the current property records to choose up to five supported research cases. Your findings and corrections will stay with each property.</p>
+  {% elif view == 'held' %}<h2 id="empty-title">No held explanations in this view</h2><p>Closed or contradicted explanations remain here when they arise, preserving the reason they were set aside.</p><a class="button button-secondary" href="{{ url_for('pmi_review.index', view='all') }}">See all properties</a>
+  {% else %}<h2 id="empty-title">Bring the property records into your workspace</h2><p>Use Load property records above to make the existing research available for review. No owner contact or marketing starts from this action.</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

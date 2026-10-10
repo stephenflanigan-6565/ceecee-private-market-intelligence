@@ -117,10 +117,15 @@ migration to be applied before use and does not create production tables.
 
 ## Activation and validation limits
 
-The reasoning core is a draft, not an activated Flask endpoint or worker.
-Source capture/annotation adapters, protected operator access, and production
-memory integration remain. The supplied memory migration has not been applied
-to the live database. PostgreSQL operation remains unverified.
+The reasoning core now has a protected operator integration at `/review/`.
+See OPERATOR_REVIEW_GUIDE.md for activation. The workspace accepts operator-captured
+facts and attributed public/authorized statements, saves case workflow separately
+from verified hypothesis feedback, and uses persistent PostgreSQL in production.
+Initialization creates only isolated review and memory tables through an
+authenticated POST. No migration or writes happen on ordinary GET requests.
+Source discovery/fetch adapters and production-memory activation remain separate
+from this operator workflow; no production data migration has been applied by
+the development session.
 
 All actual FIND4 profiles are used as offline input. Actual results and owner
 data stay outside the source PR and package. The current export has no public
@@ -130,8 +135,9 @@ match supplied evidence; it does not establish that the properties cannot sell.
 
     python -m unittest discover -s tests -v
 
-Existing live routes, protected V19V, legacy evidence ledger, marketing,
-outreach, and contact permissions are unchanged by this draft.
+Existing diagnostic routes, protected V19V, legacy evidence ledger, marketing,
+outreach, and contact permissions retain their behavior. web_app.py registers
+the isolated operator blueprint and adds a home navigation link.
 
 ## Verification record for this revision
 
@@ -157,3 +163,19 @@ The 147 existing property investigations and 28 research hypotheses remain
 available, alongside 19 closed-explanation cases. An empty new seller batch does
 not dismiss those properties. Public/social behavior is tested with synthetic
 fixtures. No external/model calls or production database writes occurred.
+
+## Operator integration validation
+
+The full offline suite passes 192 tests, including 29 persistent-workspace
+checks, 21 independent authentication/HTTP checks, and three real form-to-engine
+checks. Browser validation retained all 194 actual cases, bounded the research
+pilot to five, preserved working notes/stages across reloads, and downloaded a
+complete private workspace record. A separate synthetic browser check exercised
+typed source capture, verified negative feedback, and attributed sale statements.
+
+An isolated PostgreSQL 16 container verified durable storage, source/review
+behavior, atomic import and memory rollback, enforced read-only connections,
+and the five-case limit under nine concurrent writers. This validates the
+PostgreSQL adapter locally; production activation still requires the operator
+passphrase and authenticated initialization against the existing app database.
+No production schema migration or review data was written during development.

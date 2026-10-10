@@ -41,6 +41,15 @@ from authoritative_research_evidence_memory_v17d import build_authoritative_rese
 
 app = Flask(__name__)
 
+# Isolated operator review; FIND4 is invoked only after an authenticated POST.
+from pmi_review import create_blueprint as create_pmi_review_blueprint
+
+def _review_source_export():
+    from find4 import build_find4
+    return build_find4(include_all_profiles=True)
+
+app.register_blueprint(create_pmi_review_blueprint(_review_source_export))
+
 PAGE = """
 <!doctype html>
 <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -56,6 +65,7 @@ small{color:#666}
 <body>
 <h1>PRIVATE MARKET INTELLIGENCE</h1>
 <div class="sub">Westhampton Beach Seller Opportunity Engine</div>
+<p><a href="/review/">Open the property review workspace</a></p>
 <div class="grid">
 {% for key,val in data.opportunities.items() %}
 <div class="card"><div class="n">{{ val }}</div><div>{{ key }}</div></div>

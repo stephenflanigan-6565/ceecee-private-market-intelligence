@@ -1,0 +1,9 @@
+{% extends 'pmi_review/base.html' %}
+{% block title %}Open your workspace · PMI{% endblock %}
+{% block content %}
+<section class="entry-panel">
+  <p class="eyebrow">Welcome to PMI</p><h1>Your property<br>intelligence workspace.</h1><p class="page-intro">A place to investigate properties, keep your findings, and decide where your experience can make a difference.</p>
+  <div class="entry-card"><h2>Open your workspace</h2><p class="muted">Use the private access passphrase configured for your team.</p><form method="post" action="{{ url_for('pmi_review.login') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}"><div class="field"><label for="access-key">Access passphrase</label><input id="access-key" name="access_key" type="password" required autocomplete="current-password" autofocus></div><button class="button button-primary button-full" type="submit">Sign in <span aria-hidden="true">→</span></button></form></div>
+  <p class="entry-footnote">Property and owner records are available after sign-in.</p>
+</section>
+{% endblock %}
