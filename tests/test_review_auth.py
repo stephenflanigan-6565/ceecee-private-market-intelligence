@@ -103,7 +103,9 @@ class ReviewAuthTests(unittest.TestCase):
             with self.subTest(key=key):
                 client = self.make_app(key=key).test_client()
                 for path in ("/review", "/review/export", "/review/cases/anything"):
-                    self.assertEqual(503, client.get(path).status_code)
+                    page = client.get(path)
+                    self.assertEqual(200, page.status_code)
+                    self.assertIn("safely locked", page.get_data(as_text=True))
                 self.assertEqual(503, client.post("/review/initialize").status_code)
         self.assert_no_storage_or_source_access()
 
