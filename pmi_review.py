@@ -31,7 +31,7 @@ def source_url(value):
     return None
 
 
-def create_blueprint(source_loader, *, store_factory=None, research_factory=None, access_key=None, allow_http=False):
+def create_blueprint(source_loader, *, store_factory=None, research_factory=None, export_factory=None, access_key=None, allow_http=False):
     key = access_key if access_key is not None else os.getenv("PMI_REVIEW_ACCESS_KEY", "")
     configured = isinstance(key, str) and len(key) >= 24
     signing_key = hashlib.sha256(("PMI_OPERATOR_V1:" + key).encode()).hexdigest()
@@ -50,6 +50,20 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
         if store_factory:
             return store_factory()
         return ReviewStore(database_dsn())
+
+    @bp.get("/research-exports.json")
+    def research_exports_json():
+        # The existing authentication guard protects links and record counts.
+        # A status read never uploads, initializes storage or changes the gate.
+        try:
+            if export_factory:
+                service = export_factory()
+            else:
+                from pmi_drive_export_service import DriveExportService
+                service = DriveExportService(store().dsn)
+            return Response(json.dumps(service.status(), ensure_ascii=False, allow_nan=False), mimetype="application/json")
+        except Exception:
+            return Response(json.dumps({"status": "UNAVAILABLE", "message": "Research export status is temporarily unavailable."}), status=503, mimetype="application/json")
 
     def research_store(review_store=None):
         if research_factory:

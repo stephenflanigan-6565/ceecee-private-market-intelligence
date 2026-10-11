@@ -80,7 +80,9 @@ class _WorkerHandle:
                        "learning_last_poll_at": None,
                        "learning_last_outcome": None,
                        "learning_last_completed_at": None,
-                       "learning_refreshes": 0}
+                       "learning_refreshes": 0, "export_started": False,
+                       "export_last_poll_at": None, "export_last_outcome": None,
+                       "export_last_completed_at": None, "export_verified_runs": 0}
 
     def stop(self):
         self._stop.set()
@@ -96,7 +98,8 @@ class _WorkerHandle:
 
 def start_worker(store_factory, *, collector=collect_case, interval_seconds=30,
                  startup_delay=5, learning_factory=None,
-                 learning_interval_seconds=120):
+                 learning_interval_seconds=120, export_factory=None,
+                 export_poll_seconds=120, research_enabled=True):
     """Share one daemon for acquisition and optional stored-review analysis.
 
     Each task has its own safe error handling. Learning starts on the first
@@ -104,9 +107,12 @@ def start_worker(store_factory, *, collector=collect_case, interval_seconds=30,
     makes unchanged reports idempotent and coordinates concurrent processes.
     """
     handle = _WorkerHandle()
+    if not research_enabled:
+        handle._state["last_outcome"] = "DISABLED"
     interval = max(0.01, float(interval_seconds))
     delay = max(0, float(startup_delay))
     learning_interval = max(30.0, float(learning_interval_seconds))
+    export_interval = max(30.0, float(export_poll_seconds))
     worker_id = "worker_" + uuid.uuid4().hex
 
     def poll():
@@ -115,6 +121,7 @@ def start_worker(store_factory, *, collector=collect_case, interval_seconds=30,
         if handle._stop.wait(delay):
             return
         next_learning_poll = None
+        next_export_poll = None
         while not handle._stop.is_set():
             if learning_factory is not None and (next_learning_poll is None or time.monotonic() >= next_learning_poll):
                 learning_checked_at = _now()
@@ -132,18 +139,37 @@ def start_worker(store_factory, *, collector=collect_case, interval_seconds=30,
                     if learning_outcome == "CHANGED":
                         handle._state["learning_refreshes"] += 1
                 next_learning_poll = time.monotonic() + learning_interval
-            checked_at = _now()
-            try:
-                result = run_once(store_factory(), collector=collector, worker_id=worker_id)
-                outcome = result.get("status", "ERROR")
-            except Exception:
-                outcome = "UNAVAILABLE"
-                LOG.warning("CC research storage is temporarily unavailable; retrying after the polling interval.")
-            with handle._lock:
-                handle._state.update({"last_poll_at": checked_at, "last_outcome": outcome})
-                if outcome in {"SUCCESS", "PARTIAL", "ERROR", "UNSUPPORTED"}:
-                    handle._state["last_completed_at"] = _now()
-                    handle._state["completed_runs"] += 1
+            if research_enabled:
+                checked_at = _now()
+                try:
+                    result = run_once(store_factory(), collector=collector, worker_id=worker_id)
+                    outcome = result.get("status", "ERROR")
+                except Exception:
+                    outcome = "UNAVAILABLE"
+                    LOG.warning("CC research storage is temporarily unavailable; retrying after the polling interval.")
+                with handle._lock:
+                    handle._state.update({"last_poll_at": checked_at, "last_outcome": outcome})
+                    if outcome in {"SUCCESS", "PARTIAL", "ERROR", "UNSUPPORTED"}:
+                        handle._state["last_completed_at"] = _now()
+                        handle._state["completed_runs"] += 1
+            if export_factory is not None and (next_export_poll is None or time.monotonic() >= next_export_poll):
+                export_checked_at = _now()
+                try:
+                    export_result = export_factory().poll(worker_id=worker_id)
+                    export_outcome = export_result.get("status", "UNAVAILABLE")
+                    if export_outcome not in {"UNCONFIGURED", "WAITING", "BUSY", "RETRY_WAIT", "IDLE", "VERIFIED", "FAILED", "UNAVAILABLE"}:
+                        export_outcome = "UNAVAILABLE"
+                except Exception:
+                    export_outcome = "UNAVAILABLE"
+                    LOG.warning("CC private Drive export is temporarily unavailable; retrying after the export polling interval.")
+                with handle._lock:
+                    handle._state.update({"export_started": True,
+                                          "export_last_poll_at": export_checked_at,
+                                          "export_last_outcome": export_outcome})
+                    if export_outcome == "VERIFIED":
+                        handle._state["export_last_completed_at"] = _now()
+                        handle._state["export_verified_runs"] += 1
+                next_export_poll = time.monotonic() + export_interval
             if handle._stop.wait(interval):
                 break
 
