@@ -526,11 +526,62 @@ class ReviewStore:
     def export_payload(self):
         self._require()
         with self._session() as connection:
-            imports = self._sql(connection, "SELECT import_id,payload_json,summary_json,actor,recorded_at FROM pmi_review_imports ORDER BY recorded_at,import_id").fetchall()
-            case_ids = [case["case_id"] for case in self._list(connection)]
-            cases = []
-            for case_id in case_ids:
-                document, metadata = self._document(connection, case_id)
-                cases.append({**self._summary(document, metadata), **document, "history": self._events(connection, case_id)})
-            memory_rows = self._sql(connection, "SELECT record_key,kind,case_id,analysis_id,data_json,recorded_at FROM pmi_ai_review_records ORDER BY recorded_at,record_key").fetchall()
-            return {"version": "PMI_OPERATOR_REVIEW_EXPORT_V1", "generated_at": _now(), "imports": [{"import_id": row[0], "payload": json.loads(row[1]), "summary": json.loads(row[2]), "actor": row[3], "recorded_at": row[4]} for row in imports], "cases": cases, "memory": [{"record_key": row[0], "kind": row[1], "case_id": row[2], "analysis_id": row[3], "data": json.loads(row[4]), "recorded_at": row[5]} for row in memory_rows], "external_calls": 0, "model_calls": 0, "contact_authorized": False}
+            return self._export_payload_from_connection(connection)
+
+    def _export_payload_from_connection(self, connection, *, full=False):
+        """Read existing operator exports through a caller-owned transaction."""
+        imports = self._sql(connection, "SELECT import_id,payload_json,summary_json,actor,recorded_at FROM pmi_review_imports ORDER BY recorded_at,import_id").fetchall()
+        case_rows = self._sql(connection, "SELECT v.data_json,c.state,c.pilot,c.import_id,c.updated_at,c.version_id FROM pmi_review_cases c JOIN pmi_review_case_versions v ON v.version_id=c.version_id").fetchall()
+        event_rows = self._sql(connection, "SELECT event_id,case_id,kind,data_json,recorded_at FROM pmi_review_events ORDER BY recorded_at,event_id").fetchall()
+        history = {}
+        for row in event_rows:
+            history.setdefault(row[1], []).append({"event_id": row[0], "case_id": row[1], "kind": row[2], "data": json.loads(row[3]), "recorded_at": row[4]})
+        cases = []
+        for row in case_rows:
+            document = json.loads(row[0])
+            case_id = document["baseline"]["case_id"]
+            metadata = {"state": row[1], "pilot": bool(row[2]), "import_id": row[3], "updated_at": row[4]}
+            if full:
+                metadata["version_id"] = row[5]
+            cases.append({**self._summary(document, metadata), **document, "history": history.get(case_id, [])})
+        cases.sort(key=lambda case: (case["lane"] != "SELLER_REVIEW", (case["property_address"] or "").casefold(), case["case_id"]))
+        condition, params = (" WHERE SUBSTR(kind,1,13)<>?", ("DRIVE_EXPORT_",)) if full else ("", ())
+        memory_rows = self._sql(connection, "SELECT record_key,kind,case_id,analysis_id,data_json,recorded_at FROM pmi_ai_review_records" + condition + " ORDER BY recorded_at,record_key", params).fetchall()
+        payload = {"version": "PMI_OPERATOR_REVIEW_EXPORT_V1", "generated_at": _now(), "imports": [{"import_id": row[0], "payload": json.loads(row[1]), "summary": json.loads(row[2]), "actor": row[3], "recorded_at": row[4]} for row in imports], "cases": cases, "memory": [{"record_key": row[0], "kind": row[1], "case_id": row[2], "analysis_id": row[3], "data": json.loads(row[4]), "recorded_at": row[5]} for row in memory_rows], "external_calls": 0, "model_calls": 0, "contact_authorized": False}
+        if full:
+            versions = self._sql(connection, "SELECT version_id,case_id,data_json,recorded_at FROM pmi_review_case_versions ORDER BY recorded_at,version_id").fetchall()
+            payload["case_versions"] = [{"version_id": row[0], "case_id": row[1], "data": json.loads(row[2]), "recorded_at": row[3]} for row in versions]
+        return payload
+
+    def research_export_snapshot(self):
+        """Export all research sources in one consistent, read-only snapshot.
+
+        A failure leaves source tables untouched. Delivery, publication and
+        operational receipts are outside this read transaction.
+        """
+        from pmi_research_export import (VERSION, exported_counts, review_counts,
+                                         source_revision, validate_snapshot, without_secrets)
+        from pmi_research_store import ResearchStore, TABLES as RESEARCH_TABLES
+        with self._session(snapshot=True) as connection:
+            tables = ("pmi_review_imports", "pmi_review_cases", "pmi_review_case_versions", "pmi_review_events", "pmi_ai_review_records") + RESEARCH_TABLES
+            source_counts = {}
+            for table in tables:
+                condition, params = (" WHERE SUBSTR(kind,1,13)<>?", ("DRIVE_EXPORT_",)) if table == "pmi_ai_review_records" else ("", ())
+                source_counts[table] = self._sql(connection, "SELECT COUNT(*) FROM " + table + condition, params).fetchone()[0]
+            operator = ReviewStore._export_payload_from_connection(self, connection, full=True)
+            research = ResearchStore(self.dsn)._export_payload_from_connection(connection, full=True)
+            research.pop("generated_at", None)
+            snapshot = without_secrets({"version": VERSION, "generated_at": _now(),
+                "imports": operator["imports"], "cases": operator["cases"],
+                "case_versions": operator["case_versions"], "memory": operator["memory"],
+                "research": research})
+            snapshot["source_revision"] = source_revision(snapshot)
+            snapshot["manifest"] = {"complete": True, "source_counts": source_counts,
+                "exported_counts": exported_counts(snapshot),
+                "excluded_operational_memory_prefix": "DRIVE_EXPORT_",
+                "snapshot_mode": "REPEATABLE_READ_READ_ONLY" if self.postgres else "SQLITE_READ_ONLY_TRANSACTION"}
+            snapshot["review_counts"] = review_counts(snapshot)
+            snapshot["guards"] = {"database_writes": 0, "external_calls": 0,
+                "schema_changes": False, "qualification_changes": False,
+                "discovery_changes": False, "contact_authorized": False}
+            return validate_snapshot(snapshot)

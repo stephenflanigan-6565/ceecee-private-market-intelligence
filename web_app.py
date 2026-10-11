@@ -54,20 +54,28 @@ app.register_blueprint(create_pmi_review_blueprint(_review_source_export))
 # lease permits only one acquisition at a time across Gunicorn processes.
 # This starts outside requests; GET routes remain read-only.
 _research_worker = None
-_research_enabled = (
+_review_runtime_ready = (
     os.getenv("CEECEE_ENV", "") == "production"
     and os.getenv("DATABASE_URL", "").startswith(("postgres://", "postgresql://"))
     and len(os.getenv("PMI_REVIEW_ACCESS_KEY", "")) >= 24
-    and os.getenv("PMI_RESEARCH_ENABLED", "1").lower() not in {"0", "false", "off", "no"}
 )
-if _research_enabled:
+_research_enabled = _review_runtime_ready and os.getenv("PMI_RESEARCH_ENABLED", "1").lower() not in {"0", "false", "off", "no"}
+_drive_exports_configured = _review_runtime_ready and all(
+    os.getenv(key, "").strip() for key in (
+        "PMI_GOOGLE_DRIVE_CLIENT_ID", "PMI_GOOGLE_DRIVE_CLIENT_SECRET", "PMI_GOOGLE_DRIVE_REFRESH_TOKEN"
+    )
+)
+if _research_enabled or _drive_exports_configured:
     try:
         from pmi_research_store import ResearchStore
         from pmi_review_store import ReviewStore
         from pmi_research_worker import start_worker
+        from pmi_drive_export_service import DriveExportService
         _research_worker = start_worker(
             lambda: ResearchStore(os.environ["DATABASE_URL"]),
-            learning_factory=lambda: ReviewStore(os.environ["DATABASE_URL"]),
+            learning_factory=(lambda: ReviewStore(os.environ["DATABASE_URL"])) if _research_enabled else None,
+            export_factory=(lambda: DriveExportService(os.environ["DATABASE_URL"])) if _drive_exports_configured else None,
+            research_enabled=_research_enabled,
         )
     except Exception as error:
         # A researcher startup failure must not break the operator workspace
@@ -104,8 +112,9 @@ small{color:#666}
 
 @app.get("/health")
 def health():
-    research = {"configured": _research_enabled, "started": _research_worker is not None}
+    research = {"configured": _research_enabled, "started": _research_enabled and _research_worker is not None}
     learning = {"configured": _research_enabled, "started": False}
+    export = {"configured": _drive_exports_configured, "started": False}
     if _research_worker is not None:
         try:
             raw = _research_worker.health()
@@ -129,10 +138,21 @@ def health():
                     learning[short_key] = value
                 elif key in {"learning_last_poll_at", "learning_last_completed_at"} and isinstance(value, str) and len(value) <= 40:
                     learning[short_key] = value
+            for key in ("export_started", "export_last_poll_at", "export_last_outcome",
+                        "export_last_completed_at", "export_verified_runs"):
+                value = raw.get(key)
+                short_key = key.removeprefix("export_")
+                if value is None or isinstance(value, (bool, int, float)):
+                    export[short_key] = value
+                elif key == "export_last_outcome" and value in {"UNCONFIGURED", "WAITING", "BUSY", "RETRY_WAIT", "IDLE", "VERIFIED", "FAILED", "UNAVAILABLE"}:
+                    export[short_key] = value
+                elif key in {"export_last_poll_at", "export_last_completed_at"} and isinstance(value, str) and len(value) <= 40:
+                    export[short_key] = value
         except Exception:
             research["alive"] = False
     return jsonify({"status":"ok","service":"ceecee-private-market-intelligence",
-                    "background_research": research, "background_review_learning": learning}), 200
+                    "background_research": research, "background_review_learning": learning,
+                    "background_research_export": export}), 200
 
 @app.get("/api/cloud-memory-check")
 def cloud_memory_check():

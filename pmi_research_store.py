@@ -187,23 +187,32 @@ class ResearchStore(ReviewStore):
         if not self.ready():
             return {}
         with self._session() as connection:
-            control = self._sql(connection, "SELECT enabled FROM pmi_research_control WHERE control_id=1").fetchone()
-            columns = "run_id,case_id,parcel_id,case_json,started_at,completed_at,status,bundle_json"
-            runs = self._sql(connection, "SELECT " + columns + " FROM pmi_research_runs ORDER BY started_at,run_id").fetchall()
-            snapshots = self._sql(connection, "SELECT snapshot_id,case_id,parcel_id,source_key,content_hash,source_json,first_checked_at FROM pmi_research_snapshots ORDER BY first_checked_at,snapshot_id").fetchall()
-            pointers = self._sql(connection, "SELECT case_id,source_key,snapshot_id,checked_at,source_json FROM pmi_research_sources ORDER BY case_id,source_key").fetchall()
-            schedules = self._sql(connection, "SELECT case_id,parcel_id,next_due_at,requested,last_attempt_at,last_completed_at FROM pmi_research_schedule ORDER BY case_id").fetchall()
-            return {"version": "PMI_RESEARCH_EXPORT_V1", "generated_at": _stamp(),
-                    "enabled": bool(control[0]), "runs": [self._run(row) for row in runs],
-                    "source_snapshots": [{"snapshot_id": row[0], "case_id": row[1],
-                        "parcel_id": row[2], "source_key": row[3], "content_hash": row[4],
-                        "source": json.loads(row[5]), "first_checked_at": row[6]} for row in snapshots],
-                    "source_pointers": [{"case_id": row[0], "source_key": row[1],
-                        "snapshot_id": row[2], "checked_at": row[3],
-                        "source": json.loads(row[4])} for row in pointers],
-                    "schedules": [{"case_id": row[0], "parcel_id": row[1],
-                        "next_due_at": row[2], "requested": bool(row[3]),
-                        "last_attempt_at": row[4], "last_completed_at": row[5]} for row in schedules]}
+            return self._export_payload_from_connection(connection)
+
+    def _export_payload_from_connection(self, connection, *, full=False):
+        """Read research through the snapshot's existing connection, without leases."""
+        controls = self._sql(connection, "SELECT control_id,enabled,actor,updated_at FROM pmi_research_control ORDER BY control_id").fetchall()
+        control = next((row for row in controls if row[0] == 1), None)
+        columns = "run_id,case_id,parcel_id,case_json,started_at,completed_at,status,bundle_json"
+        runs = self._sql(connection, "SELECT " + columns + " FROM pmi_research_runs ORDER BY started_at,run_id").fetchall()
+        snapshots = self._sql(connection, "SELECT snapshot_id,case_id,parcel_id,source_key,content_hash,source_json,first_checked_at FROM pmi_research_snapshots ORDER BY first_checked_at,snapshot_id").fetchall()
+        pointers = self._sql(connection, "SELECT case_id,source_key,snapshot_id,checked_at,source_json FROM pmi_research_sources ORDER BY case_id,source_key").fetchall()
+        schedules = self._sql(connection, "SELECT case_id,parcel_id,next_due_at,requested,last_attempt_at,last_completed_at FROM pmi_research_schedule ORDER BY case_id").fetchall()
+        payload = {"version": "PMI_RESEARCH_EXPORT_V1", "generated_at": _stamp(),
+                   "enabled": bool(control[1]) if control else False,
+                   "runs": [{**self._run(row), **({"case": json.loads(row[3])} if full else {})} for row in runs],
+                   "source_snapshots": [{"snapshot_id": row[0], "case_id": row[1],
+                       "parcel_id": row[2], "source_key": row[3], "content_hash": row[4],
+                       "source": json.loads(row[5]), "first_checked_at": row[6]} for row in snapshots],
+                   "source_pointers": [{"case_id": row[0], "source_key": row[1],
+                       "snapshot_id": row[2], "checked_at": row[3],
+                       "source": json.loads(row[4])} for row in pointers],
+                   "schedules": [{"case_id": row[0], "parcel_id": row[1],
+                       "next_due_at": row[2], "requested": bool(row[3]),
+                       "last_attempt_at": row[4], "last_completed_at": row[5]} for row in schedules]}
+        if full:
+            payload["controls"] = [{"control_id": row[0], "enabled": bool(row[1]), "actor": row[2], "updated_at": row[3]} for row in controls]
+        return payload
 
     def set_enabled(self, enabled, actor):
         self._require_research()
