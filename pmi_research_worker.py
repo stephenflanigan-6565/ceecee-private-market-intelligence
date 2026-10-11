@@ -2,6 +2,7 @@
 from datetime import datetime, timezone
 import logging
 import threading
+import time
 import uuid
 
 from pmi_case_sources import collect_case
@@ -49,6 +50,25 @@ def run_once(store, *, collector=collect_case, worker_id=None):
             return {"status": "RESULT_NOT_SAVED"}
 
 
+def run_learning_once(store):
+    """Refresh stored review analysis without creating an absent workspace."""
+    if not store.ready():
+        return "WAITING"
+    report = store.refresh_learning()
+    if report is None:
+        return "WAITING"
+    # The report's status describes its findings. The transient refreshed flag
+    # describes this poll, and never exposes review details in public health.
+    if report.get("refreshed") is True:
+        return "CHANGED"
+    if report.get("refreshed") is False:
+        return "UNCHANGED"
+    outcome = report.get("status")
+    if outcome in {"CHANGED", "UNCHANGED", "WAITING", "UNAVAILABLE"}:
+        return outcome
+    raise ValueError("Invalid learning refresh outcome")
+
+
 class _WorkerHandle:
     def __init__(self):
         self._stop = threading.Event()
@@ -56,7 +76,11 @@ class _WorkerHandle:
         self._thread = None
         self._state = {"started": False, "last_poll_at": None,
                        "last_outcome": "STARTING", "last_completed_at": None,
-                       "completed_runs": 0}
+                       "completed_runs": 0, "learning_started": False,
+                       "learning_last_poll_at": None,
+                       "learning_last_outcome": None,
+                       "learning_last_completed_at": None,
+                       "learning_refreshes": 0}
 
     def stop(self):
         self._stop.set()
@@ -71,11 +95,18 @@ class _WorkerHandle:
 
 
 def start_worker(store_factory, *, collector=collect_case, interval_seconds=30,
-                 startup_delay=5):
-    """Start one daemon per web process; database fencing bounds actual work."""
+                 startup_delay=5, learning_factory=None,
+                 learning_interval_seconds=120):
+    """Share one daemon for acquisition and optional stored-review analysis.
+
+    Each task has its own safe error handling. Learning starts on the first
+    poll, then checks no more often than every 30 seconds. The review store
+    makes unchanged reports idempotent and coordinates concurrent processes.
+    """
     handle = _WorkerHandle()
     interval = max(0.01, float(interval_seconds))
     delay = max(0, float(startup_delay))
+    learning_interval = max(30.0, float(learning_interval_seconds))
     worker_id = "worker_" + uuid.uuid4().hex
 
     def poll():
@@ -83,7 +114,24 @@ def start_worker(store_factory, *, collector=collect_case, interval_seconds=30,
             handle._state["started"] = True
         if handle._stop.wait(delay):
             return
+        next_learning_poll = None
         while not handle._stop.is_set():
+            if learning_factory is not None and (next_learning_poll is None or time.monotonic() >= next_learning_poll):
+                learning_checked_at = _now()
+                try:
+                    learning_outcome = run_learning_once(learning_factory())
+                except Exception:
+                    learning_outcome = "UNAVAILABLE"
+                    LOG.warning("CC review analysis is temporarily unavailable; retrying after the learning polling interval.")
+                with handle._lock:
+                    handle._state.update({"learning_started": True,
+                                          "learning_last_poll_at": learning_checked_at,
+                                          "learning_last_outcome": learning_outcome})
+                    if learning_outcome in {"CHANGED", "UNCHANGED"}:
+                        handle._state["learning_last_completed_at"] = _now()
+                    if learning_outcome == "CHANGED":
+                        handle._state["learning_refreshes"] += 1
+                next_learning_poll = time.monotonic() + learning_interval
             checked_at = _now()
             try:
                 result = run_once(store_factory(), collector=collector, worker_id=worker_id)

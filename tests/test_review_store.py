@@ -143,12 +143,16 @@ class ReviewStoreTests(unittest.TestCase):
 
     def test_state_and_note_are_not_learning_feedback(self):
         case = self.load()
-        memory = self.count("pmi_ai_review_records")
+        with sqlite3.connect(self.path) as connection:
+            memory = connection.execute("SELECT record_key,kind,data_json FROM pmi_ai_review_records WHERE kind!='LEARNING_REPORT' ORDER BY record_key").fetchall()
         self.store.set_state(case["case_id"], "COMPLETE", "I think they may sell", "trusted", "state-1")
         result = self.store.case(case["case_id"])
         self.assertEqual(result["state"], "COMPLETE")
         self.assertEqual(len(result["notes"]), 1)
-        self.assertEqual(self.count("pmi_ai_review_records"), memory)
+        with sqlite3.connect(self.path) as connection:
+            current = connection.execute("SELECT record_key,kind,data_json FROM pmi_ai_review_records WHERE kind!='LEARNING_REPORT' ORDER BY record_key").fetchall()
+        self.assertEqual(current, memory)
+        self.assertEqual(self.store.learning_report()["status"], "NEEDS_STRUCTURED_FINDINGS")
         self.assertEqual(result["analysis"]["seller_intent"], "UNKNOWN")
 
     def test_event_id_conflict_rejected_and_same_event_replay_safe(self):

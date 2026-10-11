@@ -7,6 +7,7 @@ import secrets
 import uuid
 from datetime import datetime, timezone
 from urllib.parse import urlsplit
+from zoneinfo import ZoneInfo
 
 from flask import Blueprint, Response, g, redirect, render_template, request, url_for
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
@@ -131,6 +132,17 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
             pass
         return value[:128]
 
+    @bp.app_template_filter("learning_time")
+    def learning_time(value):
+        if isinstance(value, str):
+            try:
+                moment = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                if moment.tzinfo is not None:
+                    return moment.astimezone(ZoneInfo("America/New_York")).strftime("%b %d, %Y at %-I:%M %p %Z")
+            except ValueError:
+                pass
+        return "Time unavailable"
+
     @bp.before_request
     def guard():
         if request.endpoint == "pmi_review.static":
@@ -210,6 +222,25 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
                 "research": sum(c.get("lane") == "PROPERTY_RESEARCH" for c in cases),
                 "held": sum(c.get("lane") == "HELD" for c in cases)}
 
+    def saved_learning(review_store):
+        reader = getattr(review_store, "learning_report", None)
+        result = reader() if callable(reader) else None
+        if result is not None and not isinstance(result, dict):
+            raise ValueError("Invalid review learning report")
+        return result
+
+    def learning_page(*, error="", status=200):
+        try:
+            review_store = store()
+            if not review_store.ready():
+                return render_template("pmi_review/setup.html", **context(error=error)), status
+            report = saved_learning(review_store)
+            return render_template("pmi_review/learning.html", **context(
+                ready=True, active_view="learning", counts=count_cases(review_store.list_cases()),
+                learning=report, error=error)), status
+        except Exception:
+            return unavailable()
+
     def workspace_page(*, error="", status=200):
         try:
             review_store = store()
@@ -242,6 +273,35 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
     @bp.get("/")
     def index():
         return workspace_page()
+
+    @bp.get("/learning")
+    def learning():
+        return learning_page()
+
+    @bp.get("/learning.json")
+    def learning_json():
+        try:
+            report = saved_learning(store())
+            payload = report if report is not None else {
+                "version": "PMI_REVIEW_LEARNING_V1", "status": "PREPARING",
+                "message": "Automatic review analysis is preparing. Check saved reviews to analyze the current work."}
+            return Response(json.dumps(payload, ensure_ascii=False, allow_nan=False), mimetype="application/json")
+        except Exception:
+            return Response(json.dumps({"status": "UNAVAILABLE", "message":
+                "Review learning is temporarily unavailable. Your saved work remains available."}),
+                status=503, mimetype="application/json")
+
+    @bp.post("/learning/refresh")
+    def learning_refresh():
+        try:
+            review_store = store()
+            refresh = getattr(review_store, "refresh_learning", None)
+            if not review_store.ready() or not callable(refresh):
+                return learning_page(error="Review analysis is preparing. Your saved work remains available.", status=409)
+            refresh(actor=actor)
+            return redirect(url_for("pmi_review.learning", message="Saved reviews checked. The latest analysis is shown below."), code=303)
+        except Exception:
+            return learning_page(error="Review analysis could not finish. Your saved work remains available; try again shortly.", status=503)
 
     @bp.post("/login")
     def login():
@@ -423,6 +483,10 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
         try:
             review_store = store()
             payload = review_store.export_payload()
+            try:
+                payload["learning"] = saved_learning(review_store)
+            except Exception:
+                payload["learning"] = {"status": "UNAVAILABLE", "message": "The saved review analysis could not be included in this backup."}
             try:
                 selected = research_store(review_store)
                 if selected is not None and selected.ready():
