@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>{% block title %}PMI · Property Intelligence{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('pmi_review.static', filename='pmi_review/review.css') }}">
+  {% block styles %}{% endblock %}
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to workspace</a>
@@ -24,6 +25,7 @@
         <a href="{{ url_for('pmi_review.index', view='research') }}" {% if navigation_view == 'research' %}aria-current="page"{% endif %}><span>Property research</span><span class="nav-count">{{ (counts|default({})).get('research', 0) }}</span></a>
         <a href="{{ url_for('pmi_review.index', view='held') }}" {% if navigation_view == 'held' %}aria-current="page"{% endif %}><span>Held explanations</span><span class="nav-count">{{ (counts|default({})).get('held', 0) }}</span></a>
         <a href="{{ url_for('pmi_review.index', view='all') }}" {% if navigation_view == 'all' %}aria-current="page"{% endif %}><span>All properties</span><span class="nav-count">{{ (counts|default({})).get('all', 0) }}</span></a>
+        <a href="{{ url_for('pmi_review.learning') }}" {% if navigation_view == 'learning' %}aria-current="page"{% endif %}><span>Review learning</span></a>
       </nav>
       <div class="sidebar-note"><span class="small-label">The working approach</span><p>Find a meaningful reason.<br>Check the evidence.<br>Keep what you learn.</p></div>
       <div class="sidebar-bottom">

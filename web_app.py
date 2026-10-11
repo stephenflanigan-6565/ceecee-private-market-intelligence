@@ -63,8 +63,12 @@ _research_enabled = (
 if _research_enabled:
     try:
         from pmi_research_store import ResearchStore
+        from pmi_review_store import ReviewStore
         from pmi_research_worker import start_worker
-        _research_worker = start_worker(lambda: ResearchStore(os.environ["DATABASE_URL"]))
+        _research_worker = start_worker(
+            lambda: ResearchStore(os.environ["DATABASE_URL"]),
+            learning_factory=lambda: ReviewStore(os.environ["DATABASE_URL"]),
+        )
     except Exception as error:
         # A researcher startup failure must not break the operator workspace
         # or expose a connection string in public diagnostics.
@@ -101,6 +105,7 @@ small{color:#666}
 @app.get("/health")
 def health():
     research = {"configured": _research_enabled, "started": _research_worker is not None}
+    learning = {"configured": _research_enabled, "started": False}
     if _research_worker is not None:
         try:
             raw = _research_worker.health()
@@ -114,9 +119,20 @@ def health():
                     research[key] = value
                 elif key in {"last_poll_at", "last_completed_at"} and isinstance(value, str) and len(value) <= 40:
                     research[key] = value
+            for key in ("learning_started", "learning_last_poll_at", "learning_last_outcome",
+                        "learning_last_completed_at", "learning_refreshes"):
+                value = raw.get(key)
+                short_key = key.removeprefix("learning_")
+                if value is None or isinstance(value, (bool, int, float)):
+                    learning[short_key] = value
+                elif key == "learning_last_outcome" and value in {"CHANGED", "UNCHANGED", "WAITING", "UNAVAILABLE"}:
+                    learning[short_key] = value
+                elif key in {"learning_last_poll_at", "learning_last_completed_at"} and isinstance(value, str) and len(value) <= 40:
+                    learning[short_key] = value
         except Exception:
             research["alive"] = False
-    return jsonify({"status":"ok","service":"ceecee-private-market-intelligence", "background_research": research}), 200
+    return jsonify({"status":"ok","service":"ceecee-private-market-intelligence",
+                    "background_research": research, "background_review_learning": learning}), 200
 
 @app.get("/api/cloud-memory-check")
 def cloud_memory_check():

@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import copy
 from datetime import date, datetime, timezone
 import json
+import logging
 import math
 from pathlib import Path
 import re
@@ -15,11 +16,13 @@ import sqlite3
 from urllib.parse import urlsplit
 
 from opportunity_intelligence import evaluate_payload
+from pmi_learning import VERSION as LEARNING_VERSION, build_report
 from public_intelligence import build_public_context
 from seller_ai import analyze, prepare_bundle
 from seller_ai_memory import ReviewMemory, SCHEMA as MEMORY_SCHEMA, canonical, digest, _safe_field
 
 STATES = {"NEW", "IN_REVIEW", "WAITING", "COMPLETE", "DISMISSED"}
+logger = logging.getLogger(__name__)
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS pmi_review_imports (
  import_id TEXT PRIMARY KEY, payload_json TEXT NOT NULL, summary_json TEXT NOT NULL,
@@ -111,24 +114,35 @@ class ReviewStore:
     def _connect(self, *, write=False):
         if self.postgres:
             import psycopg
-            return psycopg.connect(self.dsn)
+            return psycopg.connect(self.dsn, connect_timeout=5)
         if write:
             return sqlite3.connect(self.path, timeout=20)
         # mode=ro prevents both creation and accidental writes in all GET paths.
         return sqlite3.connect(Path(self.path).as_uri() + "?mode=ro", uri=True, timeout=20)
 
     @contextmanager
-    def _session(self, *, write=False):
+    def _session(self, *, write=False, snapshot=False):
         connection = self._connect(write=write)
         try:
             if self.postgres:
-                connection.execute("SET TRANSACTION READ WRITE" if write else "SET TRANSACTION READ ONLY")
+                if write and snapshot:
+                    # Acquire the same workspace lock before establishing a
+                    # repeatable-read snapshot. Taking only a transaction lock
+                    # *inside* repeatable read can freeze a stale snapshot while
+                    # waiting for an earlier writer. The session lock survives
+                    # this preliminary commit and is released on close below.
+                    connection.execute("SELECT pg_advisory_lock(73421609)")
+                    connection.commit()
+                access = "READ WRITE" if write else "READ ONLY"
+                connection.execute("SET TRANSACTION " + ("ISOLATION LEVEL REPEATABLE READ " if snapshot else "") + access)
                 if write:
                     # Serialize workspace mutations, including the five-case
                     # pilot limit, across processes on PostgreSQL.
                     connection.execute("SELECT pg_advisory_xact_lock(73421609)")
             elif write:
                 connection.execute("BEGIN IMMEDIATE")
+            elif snapshot:
+                connection.execute("BEGIN")
             yield connection
             if write:
                 connection.commit()
@@ -327,6 +341,76 @@ class ReviewStore:
             self._document(connection, case_id)
             return self._events(connection, case_id)
 
+    def learning_report(self):
+        """Read the last saved workspace projection without creating or updating it.
+
+        None means there is no saved projection yet, including an uninitialized
+        workspace. It does not imply that the operator has completed no work.
+        """
+        if not self.ready():
+            return None
+        with self._session(snapshot=True) as connection:
+            row = self._sql(connection, "SELECT data_json FROM pmi_ai_review_records WHERE case_id=? AND kind='LEARNING_REPORT' ORDER BY recorded_at DESC,record_key DESC LIMIT 1", ("workspace:learning",)).fetchone()
+            return json.loads(row[0]) if row else None
+
+    def _learning_cases(self, connection):
+        # Project only the address and operative next check. Import blobs,
+        # evidence packets and full analysis snapshots never travel through the
+        # report path just to list current properties.
+        if self.postgres:
+            address = "v.data_json::jsonb #>> '{baseline,property_address}'"
+            # Bind JSONPath as data: its filter '?' must not be treated as a
+            # SQL parameter marker by the shared SQLite/PostgreSQL adapter.
+            next_check = "COALESCE(jsonb_path_query_first(v.data_json::jsonb, CAST(? AS jsonpath)) #>> '{}',v.data_json::jsonb #>> '{baseline,next_check}')"
+            params = ("$.analysis.hypotheses[*] ? (@.operator_review_eligible == true).next_check",)
+        else:
+            address = "json_extract(v.data_json,'$.baseline.property_address')"
+            next_check = "COALESCE((SELECT json_extract(h.value,'$.next_check') FROM json_each(v.data_json,'$.analysis.hypotheses') h WHERE json_extract(h.value,'$.operator_review_eligible')=1 LIMIT 1),json_extract(v.data_json,'$.baseline.next_check'))"
+            params = ()
+        rows = self._sql(connection, "SELECT c.case_id,c.state," + address + "," + next_check + " FROM pmi_review_cases c JOIN pmi_review_case_versions v ON v.version_id=c.version_id ORDER BY c.case_id", params).fetchall()
+        return [{"case_id": row[0], "state": row[1], "property_address": row[2], "next_check": row[3]} for row in rows]
+
+    def refresh_learning(self, actor=None):
+        """Append one coherent, idempotent report using the existing database.
+
+        The existing workspace mutation lock keeps case pointers and append-only
+        inputs consistent across processes. Repeating the same inputs reuses
+        the original generated_at, including when multiple workers refresh.
+        No case, evidence, feedback or pattern is changed by this operation.
+        """
+        if not self.ready():
+            return None
+        with self._session(write=True, snapshot=True) as connection:
+            pointers = self._sql(connection, "SELECT case_id,version_id,state,pilot,import_id,updated_at FROM pmi_review_cases ORDER BY case_id").fetchall()
+            event_rows = self._sql(connection, "SELECT event_id,case_id,kind,data_json,recorded_at FROM pmi_review_events WHERE kind IN ('STATE','EVIDENCE','REVIEW') ORDER BY recorded_at,event_id").fetchall()
+            memory_rows = self._sql(connection, "SELECT record_key,kind,case_id,analysis_id,data_json,recorded_at FROM pmi_ai_review_records WHERE kind IN ('FEEDBACK','PATTERN') ORDER BY recorded_at,record_key").fetchall()
+            # LEARNING_REPORT rows are deliberately excluded. Saving a report
+            # must never make its own input revision change indefinitely.
+            revision = digest({"version": LEARNING_VERSION, "cases": pointers, "events": event_rows, "memory": memory_rows})
+            key = "learning:" + revision
+            prior = self._sql(connection, "SELECT data_json FROM pmi_ai_review_records WHERE record_key=?", (key,)).fetchone()
+            if prior:
+                return {**json.loads(prior[0]), "refreshed": False}
+            events = [{"event_id": row[0], "case_id": row[1], "kind": row[2], "data": json.loads(row[3]), "recorded_at": row[4]} for row in event_rows]
+            memory_inputs = [{"record_key": row[0], "kind": row[1], "case_id": row[2], "analysis_id": row[3], "data": json.loads(row[4]), "recorded_at": row[5]} for row in memory_rows]
+            memory = _TransactionMemory(connection, self.postgres)
+            report = build_report(self._learning_cases(connection), events, memory_inputs, memory.lessons(), memory.suggest_patterns(), input_revision=revision, generated_at=_now())
+            inserted = self._sql(connection, "INSERT INTO pmi_ai_review_records(record_key,kind,case_id,analysis_id,data_json,recorded_at) VALUES(?,?,?,?,?,?) ON CONFLICT(record_key) DO NOTHING", (key, "LEARNING_REPORT", "workspace:learning", "", canonical(report), report["generated_at"])).rowcount > 0
+            # Reuse the actual stored winner, even if another writer outside the
+            # normal workspace lock inserted this input revision concurrently.
+            stored = self._sql(connection, "SELECT data_json FROM pmi_ai_review_records WHERE record_key=?", (key,)).fetchone()
+            return {**json.loads(stored[0]), "refreshed": inserted}
+
+    def _refresh_learning_after_save(self):
+        try:
+            self.refresh_learning()
+        except Exception as error:
+            # The operator's transaction already committed. A derived-report
+            # error must not hide or roll back a successfully saved review.
+            # Exception text may contain connection details or operator content;
+            # log its class only, never database credentials or note bodies.
+            logger.warning("PMI learning report refresh deferred after successful operator save (%s).", type(error).__name__)
+
     def set_state(self, case_id, state, note, actor, event_id):
         self._require()
         if state not in STATES:
@@ -337,6 +421,7 @@ class ReviewStore:
             event, fresh = self._append(connection, case_id, "STATE", data, event_id)
             if fresh:
                 self._sql(connection, "UPDATE pmi_review_cases SET state=?,updated_at=? WHERE case_id=?", (state, event["recorded_at"], case_id))
+        self._refresh_learning_after_save()
         return self.case(case_id)
 
     def set_pilot(self, case_id, enabled, actor, event_id):
@@ -416,6 +501,7 @@ class ReviewStore:
                 packet = self._apply_evidence(document["native_packet"], document["baseline"], self._events(connection, case_id))
                 document.update(packet=packet, analysis=analyze(packet, _TransactionMemory(connection, self.postgres)))
                 self._save(connection, document)
+        self._refresh_learning_after_save()
         return self.case(case_id)
 
     def review(self, case_id, data, actor, event_id):
@@ -434,6 +520,7 @@ class ReviewStore:
             if fresh:
                 document["analysis"] = analyze(document["packet"], memory)
                 self._save(connection, document)
+        self._refresh_learning_after_save()
         return self.case(case_id)
 
     def export_payload(self):

@@ -1,0 +1,52 @@
+{% extends 'pmi_review/base.html' %}
+{% block title %}Review learning · PMI{% endblock %}
+{% block styles %}<link rel="stylesheet" href="{{ url_for('pmi_review.static', filename='pmi_review/learning.css') }}">{% endblock %}
+{% block content %}
+{% set outcome_labels = {'USEFUL_INVESTIGATION': 'Useful investigation', 'FALSE_POSITIVE': 'False positive', 'SELLER_REASON_CONFIRMED': 'Seller reason confirmed', 'SELLER_REASON_DISPROVED': 'Seller reason disproved', 'NO_SELLER_REASON_FOUND': 'No seller reason found', 'SOURCE_ERROR': 'Source error'} %}
+<header class="page-header learning-header">
+  <div><p class="eyebrow">Experience, remembered</p><h1>Review learning</h1><p class="page-intro">CC analyzes saved work across the properties you review. Your notes are retained, and verified findings inform its lessons and the next useful checks.</p></div>
+  <form method="post" action="{{ url_for('pmi_review.learning_refresh') }}" class="header-action"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="button button-primary" type="submit">Check saved reviews</button><a class="text-link" href="{{ url_for('pmi_review.learning') }}">Reload analysis</a></form>
+</header>
+{% if learning %}
+{% set totals = learning.counts|default({}) %}
+<section class="panel learning-summary" aria-labelledby="saved-work-heading">
+  <div class="learning-section-heading"><div><p class="eyebrow">Saved work</p><h2 id="saved-work-heading">{% if learning.status == 'NO_OPERATOR_REVIEWS' %}Ready for your first findings{% elif learning.status == 'NEEDS_STRUCTURED_FINDINGS' %}Saved work needs checked findings{% else %}Your review findings, together{% endif %}</h2></div><span class="badge {% if learning.status == 'READY' %}badge-teal{% else %}badge-muted{% endif %}">{% if learning.status == 'READY' %}Analysis saved{% elif learning.status == 'NO_OPERATOR_REVIEWS' %}No review work yet{% else %}Findings needed{% endif %}</span></div>
+  <p class="small-text muted">Latest saved analysis: {% if learning.generated_at %}<time datetime="{{ learning.generated_at }}">{{ learning.generated_at|learning_time }}</time>{% else %}Time unavailable{% endif %}. New saved work is analyzed automatically; use Check saved reviews to update this view now.</p>
+  <dl class="learning-counts">
+    <div><dt>Properties with saved work</dt><dd>{{ totals.get('properties_with_operator_work', 0) }} <span>of {{ totals.get('total_properties', 0) }}</span></dd></div>
+    <div><dt>Properties with notes</dt><dd>{{ totals.get('properties_with_notes', 0) }}</dd></div>
+    <div><dt>Properties with reviewed findings</dt><dd>{{ totals.get('properties_with_formal_reviews', 0) }}</dd></div>
+    <div><dt>Verified review findings</dt><dd>{{ totals.get('verified_review_events', 0) }}</dd></div>
+    <div><dt>Unverified review findings</dt><dd>{{ totals.get('unverified_review_events', 0) }}</dd></div>
+    <div><dt>Saved evidence records</dt><dd>{{ totals.get('evidence_records', 0) }}</dd></div>
+  </dl>
+  {% if learning.status == 'NO_OPERATOR_REVIEWS' %}<p class="learning-guidance">Open a property, check its explanation against a useful source, and save what you find. Mark a finding verified only after checking it.</p>{% elif learning.status == 'NEEDS_STRUCTURED_FINDINGS' %}<p class="learning-guidance">Your saved work is retained. Open a reviewed property and use Reviewed finding to record the result, how you checked it, and what supports it. That gives CC a checked outcome to learn from.</p>{% endif %}
+  {% if learning.workflow_stages %}<details class="source-details"><summary>Workflow progress</summary><dl class="learning-breakdown details-body">{% for stage, count in learning.workflow_stages.items() %}<div><dt>{{ stage|replace('_', ' ')|title }}</dt><dd>{{ count }}</dd></div>{% endfor %}</dl></details>{% endif %}
+</section>
+{% if learning.next_checks %}
+<section class="panel learning-section" aria-labelledby="next-checks-heading"><p class="eyebrow">Make the next step clear</p><h2 id="next-checks-heading">Next useful checks</h2><ul class="learning-next-checks">{% for check in learning.next_checks %}<li>{% if check is mapping %}{% if check.case_id %}<a class="text-link" href="{{ url_for('pmi_review.case_detail', case_id=check.case_id) }}">{{ check.property_address|default('Open property', true) }}</a> {% endif %}{{ check.next_check|default(check.detail|default(check.message|default('Check the saved property findings.')), true) }}{% else %}{{ check }}{% endif %}</li>{% endfor %}</ul></section>
+{% endif %}
+<section class="learning-section" aria-labelledby="reviewed-properties-heading">
+  <div class="learning-section-heading"><div><p class="eyebrow">Continue from the saved work</p><h2 id="reviewed-properties-heading">Reviewed properties</h2></div></div>
+  {% if learning.reviewed_cases %}<div class="learning-cases">{% for item in learning.reviewed_cases %}
+    <article class="panel learning-case"><div class="learning-case-heading"><h3><a href="{{ url_for('pmi_review.case_detail', case_id=item.case_id) }}">{{ item.property_address|default('Property address unavailable', true) }}</a></h3><span class="stage stage-{{ item.state|default('NEW')|lower }}">{{ item.state|default('NEW')|replace('_', ' ')|title }}</span></div>
+      <p class="learning-case-counts">{{ item.note_count|default(0) }} notes · {{ item.review_count|default(0) }} reviewed findings · {{ item.verified_review_count|default(0) }} verified · {{ item.evidence_count|default(0) }} evidence records</p>
+      {% if item.latest_note %}<p class="learning-note"><span class="small-label">Latest working note</span>{% if item.latest_note is mapping %}{{ item.latest_note.note|default(item.latest_note.detail|default(''), true) }}{% else %}{{ item.latest_note }}{% endif %}</p>{% endif %}
+      <p class="learning-state">{% if item.verified_review_count|default(0) %}Verified findings are available for review learning.{% elif item.review_count|default(0) %}Review findings are saved; verification is still needed.{% else %}Saved work is available. Record a checked finding to teach CC the result.{% endif %}</p>
+      {% if item.next_check %}<div class="next-step-box"><span class="small-label">Next useful check</span><p>{{ item.next_check }}</p></div>{% endif %}
+      <a class="text-link" href="{{ url_for('pmi_review.case_detail', case_id=item.case_id) }}">Open saved review <span aria-hidden="true">→</span></a>
+    </article>
+  {% endfor %}</div>{% if totals.get('properties_with_operator_work', 0) > learning.reviewed_cases|length %}<p class="form-hint">Showing {{ learning.reviewed_cases|length }} properties with saved work. All properties remain available in the workspace.</p>{% endif %}
+  {% else %}<div class="panel quiet-panel"><p>No property review work was present in this saved analysis.</p><a class="text-link" href="{{ url_for('pmi_review.index', view='pilot') }}">Open the research pilot</a></div>{% endif %}
+</section>
+{% if learning.lessons or learning.suggestions %}
+<section class="panel learning-section" aria-labelledby="lessons-heading"><p class="eyebrow">What the checked outcomes teach</p><h2 id="lessons-heading">Lessons and candidate patterns</h2><p class="muted">These counts describe reviewed properties. A candidate pattern needs evaluation before becoming a new discovery rule.</p>
+  {% if learning.verified_outcomes %}<dl class="learning-breakdown">{% for outcome, count in learning.verified_outcomes.items() %}<div><dt>{{ outcome_labels.get(outcome, outcome|replace('_', ' ')|title) }}</dt><dd>{{ count }}</dd></div>{% endfor %}</dl>{% endif %}
+  {% for lesson in learning.lessons|default([]) %}<div class="learning-lesson"><h3>{{ lesson.pattern|replace('_', ' ')|title }}</h3><p>{{ lesson.reviewed_properties }} reviewed properties</p><ul>{% for outcome, count in lesson.outcomes.items() %}<li>{{ outcome_labels.get(outcome, outcome|replace('_', ' ')|title) }}: {{ count }}</li>{% endfor %}</ul></div>{% endfor %}
+  {% if learning.suggestions %}<details class="source-details"><summary>Candidate evidence combinations ({{ learning.suggestion_count|default(learning.suggestions|length) }})</summary><div class="details-body">{% for suggestion in learning.suggestions %}<article class="learning-candidate"><div class="tag-row"><span class="badge badge-outline">Candidate · not adopted</span><span class="small-text muted">{{ suggestion.reviewed_properties }} reviewed properties</span></div><h3>Evidence observed together</h3><dl class="learning-conditions">{% for condition in suggestion.conditions %}<div><dt>{{ condition.field|replace('_', ' ')|title }}</dt><dd>{{ condition.value }}</dd></div>{% endfor %}</dl><ul>{% for outcome, count in suggestion.outcomes.items() %}<li>{{ outcome_labels.get(outcome, outcome|replace('_', ' ')|title) }}: {{ count }}</li>{% endfor %}</ul></article>{% endfor %}{% if learning.suggestion_count|default(0) > learning.suggestions|length %}<p class="form-hint">Showing {{ learning.suggestions|length }} candidate combinations.</p>{% endif %}</div></details>{% endif %}
+</section>
+{% elif totals.get('verified_review_events', 0) %}<section class="panel learning-section"><h2>Checked findings retained</h2><p class="muted">The verified reviews are saved. No comparable evidence combination has produced a candidate pattern yet.</p></section>{% endif %}
+{% else %}
+<section class="panel learning-summary" aria-labelledby="preparing-learning-heading"><p class="eyebrow">Saved work, ready to analyze</p><h2 id="preparing-learning-heading">Automatic review analysis is preparing</h2><p>Your property notes, reviewed findings, and evidence remain in the workspace. Use Check saved reviews to prepare an analysis of the current saved work.</p><p class="form-hint">This page shows actual saved counts once the first analysis is available.</p></section>
+{% endif %}
+{% endblock %}
