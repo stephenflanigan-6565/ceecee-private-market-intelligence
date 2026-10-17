@@ -333,7 +333,7 @@ class ReviewStore:
             for event in evidence:
                 event["superseded"] = event["event_id"] in replaced
                 event["superseded_by"] = replaced.get(event["event_id"], [])
-            return {**self._summary(document, metadata), "analysis": document["analysis"], "baseline": document["baseline"], "evidence": evidence, "history": events, "notes": [event for event in events if event["kind"] == "STATE" and event["data"]["note"]]}
+            return {**self._summary(document, metadata), "analysis": document["analysis"], "baseline": document["baseline"], "selection_version_id": digest(document), "selection_reason_ids": [digest(h) for h in document["baseline"].get("hypotheses", [])], "evidence": evidence, "history": events, "notes": [event for event in events if event["kind"] == "STATE" and event["data"]["note"]]}
 
     def history(self, case_id):
         self._require()
@@ -504,6 +504,31 @@ class ReviewStore:
         self._refresh_learning_after_save()
         return self.case(case_id)
 
+    def _selection_review_snapshot(self, connection, case_id, data):
+        # Resolve the exact retained version, never trust a client explanation.
+        row = self._sql(connection, "SELECT data_json FROM pmi_review_case_versions WHERE version_id=? AND case_id=?", (data.get("selection_version_id"), case_id)).fetchone()
+        if row is None:
+            raise ValueError("The original explanation version must belong to this case.")
+        original = json.loads(row[0])
+        baseline = original["baseline"]
+        finding = next((h for h in baseline.get("hypotheses", []) if digest(h) == data.get("selection_reason_id")), None)
+        if finding is None:
+            raise ValueError("Unknown original explanation in the retained version.")
+        if data.get("outcome") not in {"USEFUL_INVESTIGATION", "FALSE_POSITIVE", "SOURCE_ERROR"}:
+            raise ValueError("A property explanation review cannot confirm a seller's plans.")
+        revision = digest(baseline)
+        hypothesis_id = "selection_" + digest({"case_id": case_id, "baseline_revision": revision, "finding": finding})
+        snapshot = {"version": "PMI_SELECTION_REVIEW_V1", "case_id": case_id,
+                    "case_revision": revision, "property_address": baseline["property_address"],
+                    "origin": "RETAINED_PROPERTY_SELECTION", "baseline_snapshot": baseline,
+                    "observations": [], "contact_authorized": False,
+                    "hypotheses": [{"hypothesis_id": hypothesis_id,
+                                    "pattern_tags": ["selection_route:" + finding["route"]],
+                                    "retained_explanation": finding,
+                                    "matched_conditions": [], "supporting_fact_ids": []}]}
+        snapshot["analysis_id"] = digest(snapshot)
+        return snapshot, hypothesis_id
+
     def review(self, case_id, data, actor, event_id):
         self._require()
         if not isinstance(data, dict):
@@ -512,7 +537,13 @@ class ReviewStore:
         with self._session(write=True) as connection:
             document, _ = self._document(connection, case_id, lock=True)
             memory = _TransactionMemory(connection, self.postgres)
+            if data.get("selection_version_id") or data.get("selection_reason_id"):
+                snapshot, hypothesis_id = self._selection_review_snapshot(connection, case_id, data)
+                memory.remember_analysis(snapshot)
+                data = {**data, "analysis_id": snapshot["analysis_id"], "hypothesis_id": hypothesis_id}
             analysis = memory.analysis(data.get("analysis_id"))
+            if analysis and analysis.get("origin") == "RETAINED_PROPERTY_SELECTION" and data.get("outcome") not in {"USEFUL_INVESTIGATION", "FALSE_POSITIVE", "SOURCE_ERROR"}:
+                raise ValueError("A property explanation review cannot confirm a seller's plans.")
             if analysis is None or analysis["case_id"] != case_id:
                 raise ValueError("The reviewed analysis must belong to this property case.")
             payload = memory.review(event_id=event_id, analysis_id=data.get("analysis_id"), hypothesis_id=data.get("hypothesis_id"), actor=actor, outcome=data.get("outcome"), method=data.get("method"), detail=data.get("detail"), verified=_bool(data.get("verified", False), "Finding verification"), supersedes=data.get("supersedes") or None)
