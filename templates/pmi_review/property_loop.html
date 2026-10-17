@@ -1,0 +1,34 @@
+<section class="panel" aria-label="Property research assessment">
+  <h2>Property research assessment and comparisons</h2>
+  <p>Experimental research suggestions. These do not select sellers, establish seller intent, or authorize contact.</p>
+  {% if property_loop_error %}<p role="alert">{{ property_loop_error }}</p>
+  {% elif not property_loop %}<p>Waiting for the next saved-review assessment.</p>
+  {% else %}
+  <p>Saved assessment {{ property_loop.sequence }} · evaluated {{ property_loop.evaluated_on }} · saved {{ property_loop.generated_at|research_time }}. This is the last completed assessment; newer changes may await the next poll.</p>
+  <p>Experimental thresholds: {{ property_loop.policy.minimum_independent_dimensions }} independent dimensions; observations at most {{ property_loop.policy.fact_max_age_days }} days old; source checks flagged stale after {{ property_loop.policy.source_check_max_age_days }} days; up to {{ property_loop.policy.inventory_limit }} saved properties and {{ property_loop.policy.candidate_limit }} suggestions per explanation.</p>
+  {% set assessment = property_loop.cases.get(case.case_id) %}
+  {% if assessment %}
+  <p>Latest source-check status: <strong>{{ assessment.sources.status }}</strong>. Retrieval time does not establish current occupancy or ownership.</p>
+  {% for s in assessment.sources.retained %}
+  <details><summary>{{ s.source_key }} — {{ s.validation }}{% if s.stale %} · STALE{% endif %}</summary>
+    <p>Snapshot {{ s.snapshot_id }}; run(s) {{ s.run_ids|join(', ') }}.</p>
+    <p>Checked {{ s.checked_at }}; source observation timestamp {{ s.source_observed_at }}.</p>
+    <p>Source record dates: {{ s.recorded_dates }}. Effective dates: {{ s.effective_dates or 'Not supplied' }}.</p>
+  </details>
+  {% endfor %}
+  {% for f in assessment.findings %}
+  <article><h3>{{ f.assessment|replace('_', ' ')|title }}</h3>
+    <p>{{ f.original_explanation }}</p>
+    <p>Exact analysis {{ f.analysis_id }} · reason {{ f.hypothesis_id }} · original version {{ f.original_version }} · baseline {{ f.case_revision }}.</p>
+    {% if not f.current_baseline_matches %}<p>Historical explanation: the current baseline differs. It cannot seed current comparisons.</p>{% endif %}
+    <p>Active findings: {{ f.active_event_ids|join(', ') or 'None verified' }}.</p>
+    <details><summary>Original explanation and finding history</summary><pre>{{ f.finding_history|tojson(indent=2) }}</pre></details>
+    <h4>Saved-inventory comparisons</h4>
+    {% for c in f.comparisons.candidates %}<p><a href="{{ url_for('pmi_review.case_detail', case_id=c.case_id) }}">{{ c.property_address }}</a> — {{ c.next_question }}</p><details><summary>Support, source status and missing information</summary><pre>{{ c|tojson(indent=2) }}</pre></details>{% else %}<p>No supported comparison in this saved assessment. {{ f.comparisons.reason|default('') }}</p>{% endfor %}
+    <p>Inventory truncated: {{ f.comparisons.inventory_truncated }}. Candidate list truncated: {{ f.comparisons.candidates_truncated|default(false) }}.</p>
+    <details><summary>Excluded comparisons</summary><pre>{{ f.comparisons.excluded|tojson(indent=2) }}</pre></details>
+  </article>
+  {% else %}<p>No original property explanation has a recorded finding yet.</p>{% endfor %}
+  <details><summary>Source changes in this assessment</summary><pre>{{ property_loop.source_changes|selectattr('case_id', 'equalto', case.case_id)|list|tojson(indent=2) }}</pre></details>
+  {% endif %}{% endif %}
+</section>

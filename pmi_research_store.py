@@ -351,5 +351,8 @@ class ResearchStore(ReviewStore):
                          "checked_at": _stamp(now), "source_statuses": {source["source_key"]: source["status"] for source in bundle["sources"]},
                          "summary": bundle.get("change_summary", "Official record check saved."),
                          "actor": "CC official-record researcher", "seller_intent_inferred": False}, run_id)
+        # Acquisition is already committed. A projection failure cannot erase
+        # sources or trigger another acquisition; the learning poll repairs it.
+        self._refresh_learning_after_save()
         return {"status": bundle["status"], "run_id": run_id, "new_snapshots": snapshots,
                 "already_finished": False}

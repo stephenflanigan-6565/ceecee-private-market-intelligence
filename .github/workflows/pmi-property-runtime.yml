@@ -1,0 +1,49 @@
+name: PMI isolated property runtime
+on:
+  push:
+    branches: [codex/five-pilot-runtime]
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pmi_test
+          POSTGRES_PASSWORD: disposable_test_only
+          POSTGRES_DB: pmi_feedback_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pmi_test -d pmi_feedback_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'psycopg[binary]>=3.2,<4' 'Flask>=3.0,<4'
+      - name: SQLite and isolated PostgreSQL acceptance
+        env:
+          PYTHONPATH: .:tests
+          PMI_TEST_POSTGRES_ISOLATED: '1'
+          PMI_TEST_POSTGRES_DSN: postgresql://pmi_test:disposable_test_only@127.0.0.1:5432/pmi_feedback_test
+        run: |
+          python - <<'PY'
+          import os, unittest, psycopg
+          with psycopg.connect(os.environ['PMI_TEST_POSTGRES_DSN']) as c:
+              print('POSTGRES_VERSION', c.info.server_version)
+          suite = unittest.defaultTestLoader.loadTestsFromName('test_property_loop_runtime')
+          r = unittest.TextTestRunner(verbosity=2).run(suite)
+          print('RUNTIME_RESULT', r.testsRun, 'tests', len(r.failures), 'failures', len(r.errors), 'errors', len(r.skipped), 'skips')
+          if not r.wasSuccessful() or r.testsRun < 12 or r.skipped:
+              raise SystemExit(1)
+          PY
+      - name: Existing regression coverage
+        env:
+          PYTHONPATH: .:tests
+        run: python -m unittest test_property_selection_feedback.SelectionLoopSQLiteTests test_review_store test_review_flow test_review_auth test_learning_store test_learning_worker test_research_store test_research_worker -q

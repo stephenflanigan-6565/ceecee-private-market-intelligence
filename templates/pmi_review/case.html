@@ -28,6 +28,7 @@
 {%- endmacro %}
 {% block title %}{{ case.property_address or 'Property review' }} · PMI{% endblock %}
 {% block content %}
+{% include 'pmi_review/property_loop.html' %}
 {% set analysis = case.analysis|default({}) %}
 {% set baseline = case.baseline|default({}) %}
 {% set hypotheses = analysis.hypotheses|default([]) %}
