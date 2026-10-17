@@ -46,6 +46,9 @@ class RuntimeChecks:
         modified['profiles'][0]['why_pmi_noticed_it'][0]['noticed_because'] = 'SYNTHETIC revised explanation'
         # Import changes the retained baseline; older findings stay tied to it.
         self.store.import_payload(modified, 'synthetic')
+        # Imports retain the existing deferred refresh contract. Exercise the
+        # actual recovery poll before reading the newly evaluated version.
+        run_learning_once(self.store)
         historical = self.report()['cases'][self.cid]['findings'][0]
         self.assertEqual(historical['analysis_id'], original['analysis_id'])
         self.assertFalse(historical['current_baseline_matches'])
