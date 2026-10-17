@@ -1,0 +1,48 @@
+name: PMI isolated feedback loop proposal
+on:
+  push:
+    branches: [codex/feedback-loop-proposal-tests]
+permissions:
+  contents: read
+jobs:
+  proposal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pmi_test
+          POSTGRES_PASSWORD: disposable_test_only
+          POSTGRES_DB: pmi_feedback_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U pmi_test -d pmi_feedback_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install 'psycopg[binary]>=3.2,<4' 'Flask>=3.0,<4'
+      - name: Run isolated proposal on SQLite and PostgreSQL 16
+        env:
+          PYTHONPATH: .:tests
+          PMI_TEST_POSTGRES_ISOLATED: '1'
+          PMI_TEST_POSTGRES_DSN: postgresql://pmi_test:disposable_test_only@127.0.0.1:5432/pmi_feedback_test
+        run: |
+          python - <<'PY'
+          import os, unittest, psycopg
+          with psycopg.connect(os.environ['PMI_TEST_POSTGRES_DSN']) as c:
+              version = c.info.server_version
+              assert 160000 <= version < 170000
+              print('POSTGRES_VERSION', version)
+          suite = unittest.defaultTestLoader.loadTestsFromName('test_feedback_loop_proposal')
+          assert suite.countTestCases() == 10
+          r = unittest.TextTestRunner(verbosity=2).run(suite)
+          print('LOOP_PROPOSAL_RESULT', r.testsRun, 'tests', len(r.failures), 'failures', len(r.errors), 'errors', len(r.skipped), 'skips')
+          if not r.wasSuccessful() or r.testsRun != 10 or r.skipped:
+              raise SystemExit(1)
+          PY
