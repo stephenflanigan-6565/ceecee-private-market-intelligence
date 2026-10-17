@@ -11,6 +11,7 @@ from pmi_research_worker import run_once, run_learning_once
 from pmi_case_sources import _url
 from test_property_selection_feedback import SelectionLoopChecks
 from test_research_store import pilot_payload
+from test_review_store import payload
 
 
 class RuntimeChecks:
@@ -41,10 +42,17 @@ class RuntimeChecks:
         self.assertEqual(corrected['assessment'], 'REVIEW_CONTRADICTS_ORIGINAL')
         self.assertEqual(corrected['analysis_id'], original['analysis_id'])
         self.assertEqual(len(corrected['finding_history']), 2)
-        modified = pilot_payload()
+        modified = payload()
+        modified['profiles'][0]['why_pmi_noticed_it'][0]['noticed_because'] = 'SYNTHETIC revised explanation'
         # Import changes the retained baseline; older findings stay tied to it.
         self.store.import_payload(modified, 'synthetic')
-        self.assertEqual(self.report()['cases'][self.cid]['findings'][0]['analysis_id'], original['analysis_id'])
+        historical = self.report()['cases'][self.cid]['findings'][0]
+        self.assertEqual(historical['analysis_id'], original['analysis_id'])
+        self.assertFalse(historical['current_baseline_matches'])
+        self.review('new-version')
+        findings = self.report()['cases'][self.cid]['findings']
+        self.assertEqual(len(findings), 2)
+        self.assertEqual(sum(f['current_baseline_matches'] for f in findings), 1)
         self.assertEqual(len(self.store.case(self.cid)['notes']), 5)
 
     def test_two_explanations_and_old_version_cannot_cross_bind(self):
