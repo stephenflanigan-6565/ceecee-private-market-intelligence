@@ -224,6 +224,8 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
         ids = {name: str(uuid.uuid4()) for name in ("state", "evidence", "public_statement", "pilot")}
         for hypothesis in item.get("analysis", {}).get("hypotheses", []):
             ids["review_" + hypothesis["hypothesis_id"]] = str(uuid.uuid4())
+        for reason_id in item.get("selection_reason_ids", []):
+            ids["selection_" + reason_id] = str(uuid.uuid4())
         research_status, research_result, research_error = research_read(review_store, case_id)
         return render_template("pmi_review/case.html", **context(ready=True, case=item, error=error, counts=counts,
                                research_status=research_status, research_result=research_result, research_error=research_error,
@@ -486,7 +488,7 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
 
     @bp.post("/cases/<case_id>/review")
     def submit_review(case_id):
-        data = {k: request.form.get(k, "") for k in ("analysis_id", "hypothesis_id", "outcome", "method", "detail")}
+        data = {k: request.form.get(k, "") for k in ("analysis_id", "hypothesis_id", "outcome", "method", "detail", "selection_version_id", "selection_reason_id")}
         data["verified"] = checked("verified")
         if request.form.get("supersedes"):
             data["supersedes"] = request.form["supersedes"]
