@@ -381,6 +381,8 @@ class ReviewStore:
         if not self.ready():
             return None
         with self._session(write=True, snapshot=True) as connection:
+            from pmi_property_loop import refresh
+            refresh(self, connection)
             pointers = self._sql(connection, "SELECT case_id,version_id,state,pilot,import_id,updated_at FROM pmi_review_cases ORDER BY case_id").fetchall()
             event_rows = self._sql(connection, "SELECT event_id,case_id,kind,data_json,recorded_at FROM pmi_review_events WHERE kind IN ('STATE','EVIDENCE','REVIEW') ORDER BY recorded_at,event_id").fetchall()
             memory_rows = self._sql(connection, "SELECT record_key,kind,case_id,analysis_id,data_json,recorded_at FROM pmi_ai_review_records WHERE kind IN ('FEEDBACK','PATTERN') ORDER BY recorded_at,record_key").fetchall()
@@ -410,6 +412,14 @@ class ReviewStore:
             # Exception text may contain connection details or operator content;
             # log its class only, never database credentials or note bodies.
             logger.warning("PMI learning report refresh deferred after successful operator save (%s).", type(error).__name__)
+
+    def property_loop_report(self):
+        """Read the last atomically committed assessment; never refresh on GET."""
+        if not self.ready():
+            return None
+        from pmi_property_loop import latest
+        with self._session(snapshot=True) as connection:
+            return latest(self, connection)
 
     def set_state(self, case_id, state, note, actor, event_id):
         self._require()

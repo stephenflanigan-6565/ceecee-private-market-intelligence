@@ -227,7 +227,15 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
         for reason_id in item.get("selection_reason_ids", []):
             ids["selection_" + reason_id] = str(uuid.uuid4())
         research_status, research_result, research_error = research_read(review_store, case_id)
+        loop = None
+        loop_error = ''
+        try:
+            reader = getattr(review_store, 'property_loop_report', None)
+            loop = reader() if reader else None
+        except Exception:
+            loop_error = 'Property comparison is temporarily unavailable; saved reviews are retained.'
         return render_template("pmi_review/case.html", **context(ready=True, case=item, error=error, counts=counts,
+                               property_loop=loop, property_loop_error=loop_error,
                                research_status=research_status, research_result=research_result, research_error=research_error,
                                event_ids=ids, previous_case=ordered[pos-1] if pos else None,
                                next_case=ordered[pos+1] if pos+1 < len(ordered) else None)), status

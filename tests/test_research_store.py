@@ -96,12 +96,16 @@ class ResearchStoreTests(unittest.TestCase):
         case = self.load()[0]
         self.review.set_state(case["case_id"], "WAITING", "Operator's real working note", "operator", "note-1")
         before = self.review.case(case["case_id"])
-        counts = (self.count("pmi_review_case_versions"), self.count("pmi_ai_review_records"))
+        def protected_rows():
+            with self.review._session() as c:
+                return self.review._sql(c, "SELECT record_key,kind,data_json FROM pmi_ai_review_records WHERE kind NOT IN ('LEARNING_REPORT','PROPERTY_LOOP') ORDER BY record_key").fetchall()
+        counts = (self.count("pmi_review_case_versions"), protected_rows())
         claim, data, saved = self.complete()
         after = self.review.case(case["case_id"])
         for key in ("state", "notes", "analysis", "evidence", "baseline", "pilot", "seller_intent"):
             self.assertEqual(before[key], after[key])
-        self.assertEqual(counts, (self.count("pmi_review_case_versions"), self.count("pmi_ai_review_records")))
+        self.assertEqual(counts, (self.count("pmi_review_case_versions"), protected_rows()))
+        self.assertIsNotNone(self.review.property_loop_report())
         events = [event for event in after["history"] if event["kind"] == "RESEARCH"]
         self.assertEqual(len(events), 1)
         self.assertFalse(events[0]["data"]["seller_intent_inferred"])

@@ -144,13 +144,13 @@ class ReviewStoreTests(unittest.TestCase):
     def test_state_and_note_are_not_learning_feedback(self):
         case = self.load()
         with sqlite3.connect(self.path) as connection:
-            memory = connection.execute("SELECT record_key,kind,data_json FROM pmi_ai_review_records WHERE kind!='LEARNING_REPORT' ORDER BY record_key").fetchall()
+            memory = connection.execute("SELECT record_key,kind,data_json FROM pmi_ai_review_records WHERE kind NOT IN ('LEARNING_REPORT','PROPERTY_LOOP') ORDER BY record_key").fetchall()
         self.store.set_state(case["case_id"], "COMPLETE", "I think they may sell", "trusted", "state-1")
         result = self.store.case(case["case_id"])
         self.assertEqual(result["state"], "COMPLETE")
         self.assertEqual(len(result["notes"]), 1)
         with sqlite3.connect(self.path) as connection:
-            current = connection.execute("SELECT record_key,kind,data_json FROM pmi_ai_review_records WHERE kind!='LEARNING_REPORT' ORDER BY record_key").fetchall()
+            current = connection.execute("SELECT record_key,kind,data_json FROM pmi_ai_review_records WHERE kind NOT IN ('LEARNING_REPORT','PROPERTY_LOOP') ORDER BY record_key").fetchall()
         self.assertEqual(current, memory)
         self.assertEqual(self.store.learning_report()["status"], "NEEDS_STRUCTURED_FINDINGS")
         self.assertEqual(result["analysis"]["seller_intent"], "UNKNOWN")
