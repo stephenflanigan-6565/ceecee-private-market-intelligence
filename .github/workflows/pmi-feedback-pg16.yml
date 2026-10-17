@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 187e24bb10ef553255f4c37039acfc1316aec795
+          ref: 2ae349c6bcbf0009a4793284cd8ff3262b1125d1
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -60,5 +60,5 @@ jobs:
           if not result.wasSuccessful() or result.testsRun != 9 or result.skipped:
               raise SystemExit(1)
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write('PMI commit 187e24bb10ef553255f4c37039acfc1316aec795: PostgreSQL 16, 9 passed, 0 skipped. Synthetic data only.\n')
+              summary.write('PMI commit 2ae349c6bcbf0009a4793284cd8ff3262b1125d1: PostgreSQL 16, 9 passed, 0 skipped. Synthetic data only.\n')
           PY
