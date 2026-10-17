@@ -10,7 +10,7 @@ import uuid
 
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
-from urllib.parse import urlsplit, parse_qs, urlencode, urlunsplit
+from urllib.parse import urlsplit, parse_qs, urlencode, urlunsplit, quote
 
 from flask import Flask
 from pmi_review import create_blueprint
@@ -39,7 +39,7 @@ class SelectionLoopChecks:
             with psycopg.connect(raw, autocommit=True) as c:
                 c.execute('CREATE SCHEMA ' + self.schema)
             dsn = urlunsplit((url.scheme, url.netloc, url.path,
-                             urlencode({'options': '-c search_path=' + self.schema}), ''))
+                             urlencode({'options': '-c search_path=' + self.schema}, quote_via=quote), ''))
         self.store = ReviewStore(dsn)
         self.store.initialize()
         self.store.import_payload(payload(), 'SYNTHETIC operator')
