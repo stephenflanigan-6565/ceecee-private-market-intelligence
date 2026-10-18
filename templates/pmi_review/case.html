@@ -29,6 +29,7 @@
 {% block title %}{{ case.property_address or 'Property review' }} · PMI{% endblock %}
 {% block content %}
 {% include 'pmi_review/property_loop.html' %}
+{% include 'pmi_review/note_bridge.html' %}
 {% set analysis = case.analysis|default({}) %}
 {% set baseline = case.baseline|default({}) %}
 {% set hypotheses = analysis.hypotheses|default([]) %}

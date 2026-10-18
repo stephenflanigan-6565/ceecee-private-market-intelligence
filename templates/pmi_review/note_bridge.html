@@ -1,0 +1,26 @@
+<section class="panel" id="review-work" aria-label="Review saved research">
+<h2>Review saved research</h2>
+<p>Reuse a note below, confirm what it establishes, then save once. Entry time is not an observation date. Unknowns stay out of comparisons.</p>
+<p><a href="#findings">Review the original explanation</a> · <a href="#sources">Review captured evidence</a></p>
+{% for p in note_proposals %}
+<details><summary>Use saved note — {{ p.entry_time|research_time }}</summary>
+<blockquote>{{ p.passage }}</blockquote>
+<form method="post" action="{{ url_for('pmi_review.confirm_note_evidence', case_id=case.case_id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<input type="hidden" name="note_id" value="{{ p.note_id }}">
+<label>Exact supporting passage<textarea name="supporting_passage" required>{{ p.passage }}</textarea></label>
+<p>Keep the whole note or select an exact passage. The original note is retained.</p>
+<label>Proposed fact<select name="field">{% for f in ['listing_status','representation_status','condition','project_status','property_form','current_use','occupancy_status','acquisition_context'] %}<option value="{{ f }}" {% if f == p.field %}selected{% endif %}>{{ f|replace('_',' ')|title }}</option>{% endfor %}</select></label>
+<label>Proposed value<input name="value" value="{{ p.value }}" required></label>
+<p>Use UNKNOWN when unresolved. Listing examples: SOLD, LISTED, HISTORICAL_MARKETING. Representation: REPRESENTED or UNKNOWN. Acquisition and past sales are context, not fresh leads.</p>
+<label>Actual source/reference, if known<input name="source_ref"></label>
+<label>Actual observation date, if known<input type="date" name="observed_at"></label>
+<label><input type="checkbox" name="verified">I verified this fact against the source.</label>
+<label><input type="checkbox" name="current">I confirmed this observation is current.</label>
+<p>Missing source/date can be saved unresolved. Neither checkbox is selected automatically.</p>
+<label>Correct earlier evidence<select name="supersedes"><option value="">No correction</option>{% for e in case.evidence if e.data.kind == 'FACT' %}<option value="{{ e.event_id }}">{{ e.data.field }}: {{ e.data.value }} — {{ e.event_id }}</option>{% endfor %}</select></label>
+<label><input type="checkbox" name="confirm" required>I confirm this proposed fact and its uncertainties.</label>
+<button type="submit">Save confirmed evidence</button>
+</form></details>
+{% else %}<p>No saved research notes yet.</p>{% endfor %}
+</section>

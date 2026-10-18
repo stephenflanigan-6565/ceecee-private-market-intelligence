@@ -8,6 +8,14 @@
   <p>Experimental thresholds: {{ property_loop.policy.minimum_independent_dimensions }} independent dimensions; observations at most {{ property_loop.policy.fact_max_age_days }} days old; source checks flagged stale after {{ property_loop.policy.source_check_max_age_days }} days; up to {{ property_loop.policy.inventory_limit }} saved properties and {{ property_loop.policy.candidate_limit }} suggestions per explanation.</p>
   {% set assessment = property_loop.cases.get(case.case_id) %}
   {% if assessment %}
+  {% if assessment.evidence_assessment %}
+  <h3>How saved evidence affects this property</h3>
+  {% for reason in assessment.evidence_assessment.reasons %}<p>{{ reason }}</p>{% endfor %}
+  <p>Evidence used: {{ assessment.evidence_assessment.used_event_ids|join(', ') or 'None supported/current' }}. Original explanation retained; no seller ranking changed.</p>
+  <details><summary>Used, excluded and historical evidence</summary><pre>{{ assessment.evidence_assessment|tojson(indent=2) }}</pre></details>
+  <details><summary>Why this assessment changed</summary><pre>{{ property_loop.assessment_changes|default([])|selectattr('case_id', 'equalto', case.case_id)|list|tojson(indent=2) }}</pre></details>
+  {% for e in case.evidence %}{% if e.event_id not in assessment.consumed_event_ids|default([]) %}<p role="status">Evidence {{ e.event_id }} is saved; assessment pending. The background job will retry.</p>{% endif %}{% endfor %}
+  {% endif %}
   <p>Latest source-check status: <strong>{{ assessment.sources.status }}</strong>. Retrieval time does not establish current occupancy or ownership.</p>
   {% for s in assessment.sources.retained %}
   <details><summary>{{ s.source_key }} — {{ s.validation }}{% if s.stale %} · STALE{% endif %}</summary>
