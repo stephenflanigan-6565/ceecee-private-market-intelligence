@@ -3,6 +3,7 @@
 Standard library only. No model, API key, network client, or paid AI service.
 The engine reasons within explicit, expandable patterns and retained outcomes.
 """
+from pmi_note_workflow import unknown, normalize
 import argparse
 import copy
 import json
@@ -92,7 +93,7 @@ def prepare_bundle(payload, as_of=None):
     for case in baseline["cases"]:
         for name in case["owner_identity"]["names"]:
             normalized = " ".join(name.casefold().split())
-            if normalized and normalized not in {"unknown", "unavailable", "not established"}:
+            if not unknown(normalized):
                 names.setdefault(normalized, set()).add(case["case_id"])
     packets = []
     for case in baseline["cases"]:
@@ -104,7 +105,7 @@ def prepare_bundle(payload, as_of=None):
                     "field": field, "source_path": source["source_path"] + path,
                     "source_version": source["source_version"], "value": value,
                     "source_route": route, "closed_explanation": closed,
-                    "usable_for_pattern": usable,
+                    "usable_for_pattern": usable and not unknown(value),
                     "source_evidence_context": evidence_context,
                     "source_snapshot_hash": source["source_snapshot_hash"],
                 })
@@ -137,7 +138,7 @@ def prepare_packets(payload, as_of=None):
 
 def _same(value, expected):
     if isinstance(value, str) and isinstance(expected, str):
-        return " ".join(value.casefold().split()) == " ".join(expected.casefold().split())
+        return normalize(value) == normalize(expected)
     return type(value) is type(expected) and value == expected
 
 
@@ -146,7 +147,7 @@ def _matches(observations, clause):
     if clause["field"] == "public_statement":
         return []
     return [item for item in observations if item.get("field") == clause["field"]
-            and item.get("usable_for_pattern", True)
+            and item.get("usable_for_pattern", True) and not unknown(item.get("value"))
             and not item.get("closed_explanation", False) and _same(item["value"], clause["value"])]
 
 

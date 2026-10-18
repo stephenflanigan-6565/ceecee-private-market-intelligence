@@ -3,8 +3,9 @@ from datetime import date, datetime, timezone
 import json
 from seller_ai_memory import canonical, digest
 from pmi_case_sources import _valid_url, SOURCE_SPECS
+from pmi_note_workflow import normalize, unknown, assessment as evidence_assessment, FIELDS
 
-VERSION = "PMI_PROPERTY_LOOP_RUNTIME_V1"
+VERSION = "PMI_PROPERTY_LOOP_RUNTIME_V2"
 POLICY = {"experimental": True, "fact_max_age_days": 30, "source_check_max_age_days": 2,
           "minimum_independent_dimensions": 2, "inventory_limit": 200,
           "candidate_limit": 3, "seller_selection_rule": False}
@@ -37,10 +38,17 @@ def checked_sources(case, sources):
 
 def explicit_facts(case, as_of, max_age_days):
     facts, excluded, conflicts = {}, [], []
+    superseded = {e["data"].get("supersedes") for e in case.get("evidence", [])}
+
     for event in case.get("evidence", []):
+        if event["event_id"] in superseded:
+            continue
         data = event["data"]
         field = data.get("field")
-        if data.get("kind") != "FACT" or field not in DIMENSIONS:
+        if data.get("kind") != "FACT" or field not in set(DIMENSIONS) | set(FIELDS):
+            continue
+        if unknown(data.get('value')) or not data.get('usable', True):
+            excluded.append({'event_id': event['event_id'], 'reason': 'UNKNOWN_OR_UNUSABLE_NOT_MATCHING_EVIDENCE'})
             continue
         try:
             observed = date.fromisoformat(data["observed_at"][:10])
@@ -56,14 +64,13 @@ def explicit_facts(case, as_of, max_age_days):
             "value": data["value"], "observed_at": data["observed_at"],
             "source": data.get("source_url") or data.get("source_record_id")})
     # Explicit supersession only. Newer timestamps alone never erase disagreement.
-    superseded = {e["data"].get("supersedes") for e in case.get("evidence", [])
-                  if e["data"].get("verified") and e["data"].get("supersedes")}
+    # An explicit correction can retract certainty to unknown. Keep the old
+    # record, but never resurrect it merely because its correction is uncertain.
     usable = {}
     for field, values in facts.items():
-        values = [v for v in values if v["event_id"] not in superseded]
         if not values:
             continue
-        if len({str(v["value"]).casefold() for v in values}) > 1:
+        if len({normalize(v["value"]) for v in values}) > 1:
             conflicts.append({"field": field, "observations": values})
         else:
             usable[field] = values
@@ -170,9 +177,12 @@ def comparisons(seed, finding, cases, assessments, as_of):
                       and f['assessment'] in {'REVIEW_CONTRADICTS_ORIGINAL', 'CONFLICTING_FINDINGS'}
                       for f in candidate_assessment['findings'])
         facts, excluded, conflicts = explicit_facts(case, as_of, POLICY['fact_max_age_days'])
-        shared = [f for f in seed_facts if f in facts and str(seed_facts[f][0]['value']).casefold() == str(facts[f][0]['value']).casefold()]
-        differences = [f for f in seed_facts if f in facts and f not in shared]
+        shared = [f for f in seed_facts if f in DIMENSIONS and f in facts and normalize(seed_facts[f][0]['value']) == normalize(facts[f][0]['value'])]
+        differences = [f for f in seed_facts if f in DIMENSIONS and f in facts and f not in shared]
+        status_fields = ('listing_status', 'representation_status')
+        status_conflict = any(f in seed_facts and f in facts and normalize(seed_facts[f][0]['value']) != normalize(facts[f][0]['value']) for f in status_fields)
         reason = ('REVIEWED_CONTRADICTION' if blocked else 'NO_SUPPORTED_SHARED_EXPLANATION' if not matches
+                  else 'DIFFERENT_SUPPORTED_LISTING_OR_REPRESENTATION_STATUS' if status_conflict
                   else 'CONTRADICTORY_OBSERVATIONS' if conflicts or differences
                   else 'INSUFFICIENT_INDEPENDENT_DIMENSIONS' if len({DIMENSIONS[f] for f in shared}) < POLICY['minimum_independent_dimensions'] else None)
         if reason:
@@ -184,6 +194,7 @@ def comparisons(seed, finding, cases, assessments, as_of):
                 'supporting_evidence': {f: {'seed': seed_facts[f], 'candidate': facts[f]} for f in shared},
                 'excluded_observations': excluded, 'contradictions': conflicts,
                 'source_status': candidate_assessment['sources'],
+                'availability_context': candidate_assessment['evidence_assessment'],
                 'missing_information': ['Current owner objective', 'Independent check of property opportunity'],
                 'next_question': 'Does the original explanation hold here, and which dated source could disprove it?',
                 'seller_intent': 'UNKNOWN', 'contact_authorized': False})
@@ -225,6 +236,9 @@ def refresh(store, connection, *, as_of=None):
         findings, invalid = bound_findings(case, analyses)
         facts, excluded, conflicts = explicit_facts(case, as_of, POLICY['fact_max_age_days'])
         assessments[case['case_id']] = {'findings': findings, 'invalid_binding_event_ids': invalid,
+            'property_address': case['baseline']['property_address'],
+            'evidence_assessment': evidence_assessment(facts, excluded, conflicts, case['evidence']),
+            'consumed_event_ids': sorted(e['event_id'] for e in case['history'] if e['kind'] in {'REVIEW', 'EVIDENCE'}),
             'sources': _sources(store, connection, case, as_of, research_ready),
             'facts': facts, 'excluded_observations': excluded, 'contradictions': conflicts,
             'current_baseline_revision': digest(case['baseline']), 'pilot': case['pilot'],
@@ -241,8 +255,12 @@ def refresh(store, connection, *, as_of=None):
     if prior and prior['input_revision'] == revision:
         return {**prior, 'refreshed': False}
     changes = []
+    assessment_changes = []
     for cid, item in assessments.items():
         old = (prior or {}).get('cases', {}).get(cid, {})
+        if old.get('evidence_assessment') != item['evidence_assessment']:
+            assessment_changes.append({'case_id': cid, 'before': old.get('evidence_assessment'),
+                                       'after': item['evidence_assessment'], 'reason': 'Supported evidence, exclusions or contradictions changed'})
         for source in item['sources']['retained']:
             before = next((s for s in old.get('sources', {}).get('retained', []) if s['source_key'] == source['source_key']), None)
             if before and before['raw_source']['records'] != source['raw_source']['records']:
@@ -252,7 +270,7 @@ def refresh(store, connection, *, as_of=None):
                     'before': before['raw_source']['records'], 'after': source['raw_source']['records']})
     sequence = (prior or {}).get('sequence', 0) + 1
     payload.update(input_revision=revision, sequence=sequence,
-        previous_sequence=(prior or {}).get('sequence'), source_changes=changes,
+        previous_sequence=(prior or {}).get('sequence'), source_changes=changes, assessment_changes=assessment_changes,
         generated_at=datetime.now(timezone.utc).isoformat())
     store._sql(connection, 'INSERT INTO pmi_ai_review_records(record_key,kind,case_id,analysis_id,data_json,recorded_at) VALUES(?,?,?,?,?,?)',
         (f'property_loop:{sequence:020d}', 'PROPERTY_LOOP', 'workspace:property_loop', '', canonical(payload), payload['generated_at']))

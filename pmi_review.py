@@ -234,8 +234,11 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
             loop = reader() if reader else None
         except Exception:
             loop_error = 'Property comparison is temporarily unavailable; saved reviews are retained.'
+        from pmi_note_workflow import pending_assessment
+        pending = pending_assessment(item.get("history", []), (loop or {}).get("cases", {}).get(case_id))
         return render_template("pmi_review/case.html", **context(ready=True, case=item, error=error, counts=counts,
-                               property_loop=loop, property_loop_error=loop_error,
+                               property_loop=loop, property_loop_error=loop_error, assessment_pending=pending,
+                               note_proposals=[review_store.propose_note(case_id, n['event_id']) for n in item.get('notes', [])] if hasattr(review_store, 'propose_note') else [],
                                research_status=research_status, research_result=research_result, research_error=research_error,
                                event_ids=ids, previous_case=ordered[pos-1] if pos else None,
                                next_case=ordered[pos+1] if pos+1 < len(ordered) else None)), status
@@ -288,6 +291,7 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
                          ("property_address", "parcel_id", "why", "owner_names")).casefold()]
             research_status, _, research_error = research_read(review_store) if view == "pilot" else ({}, None, "")
             return render_template("pmi_review/index.html", **context(ready=True, cases=shown, counts=counts,
+                                   activity=review_store.workflow_activity() if hasattr(review_store, 'workflow_activity') else None,
                                    active_view=view, filter=view, query=q, error=error,
                                    research_status=research_status, research_error=research_error)), status
         except Exception:
@@ -381,7 +385,12 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
 
     def mutation(case_id, action, success):
         try:
-            action(store())
+            result = action(store())
+            receipt = result.get('save_receipt') if isinstance(result, dict) else None
+            if receipt:
+                prefix = 'Evidence saved.' if request.endpoint != 'pmi_review.submit_review' else 'Reviewed finding saved in case memory.'
+                success = prefix + (' Assessment updated; see the evidence used below.' if receipt['assessment_status'] == 'ASSESSED'
+                           else ' Assessment failed; retry is pending in the existing background job. Do not re-enter the evidence.')
             return go_case(case_id, success)
         except (ValueError, KeyError) as exc:
             return case_page(case_id, error=str(exc), status=400)
@@ -458,6 +467,24 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
     def reference(value):
         value = value.strip()
         return {"source_url": value} if source_url(value) else {"source_record_id": value}
+
+    @bp.post('/cases/<case_id>/note-evidence')
+    def confirm_note_evidence(case_id):
+        if not checked('confirm'):
+            return case_page(case_id, error='Confirm the proposed fact before saving.', status=400)
+        data = {'kind': 'FACT', 'note_id': request.form.get('note_id', ''),
+                'supporting_passage': request.form.get('supporting_passage', ''),
+                'field': request.form.get('field', ''), 'value': request.form.get('value', ''),
+                'observed_at': request.form.get('observed_at', ''),
+                **reference(request.form.get('source_ref', '')),
+                'verified': checked('verified'), 'current': checked('current'),
+                'supersedes': request.form.get('supersedes') or None,
+                'detail': request.form.get('supporting_passage', '')}
+        # Content identity includes quote, case, correction, source and dates.
+        # Reopening the form after a lost response still cannot duplicate it.
+        from seller_ai_memory import digest
+        identity = 'note-confirm:' + digest({'case': case_id, 'data': data, 'actor': actor})
+        return mutation(case_id, lambda s: s.add_evidence(case_id, data, actor, identity), 'Evidence saved.')
 
     @bp.post("/cases/<case_id>/evidence")
     def add_evidence(case_id):

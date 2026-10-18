@@ -8,6 +8,7 @@
   <div><p class="eyebrow">Intelligence, put to work</p><h1>{{ titles.get(view, 'Your workspace') }}</h1><p class="page-intro">{{ descriptions.get(view, descriptions['all']) }}</p></div>
   <form method="post" action="{{ url_for('pmi_review.import_cases') }}" class="header-action"><input type="hidden" name="csrf_token" value="{{ csrf_token|default('') }}"><button class="button button-secondary" type="submit">{% if (counts|default({})).get('all', 0) %}Refresh property records{% else %}Load property records{% endif %}</button><span class="form-hint">Keeps your notes and earlier evidence.</span></form>
 </header>
+{% include 'pmi_review/activity.html' %}
 {% if view == 'pilot' %}
 {% set research = research_status|default({}) %}
 <section class="panel research-control" aria-labelledby="cc-research-heading">

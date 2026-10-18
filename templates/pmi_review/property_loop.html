@@ -1,6 +1,8 @@
 <section class="panel" aria-label="Property research assessment">
   <h2>Property research assessment and comparisons</h2>
   <p>Experimental research suggestions. These do not select sellers, establish seller intent, or authorize contact.</p>
+  {% if assessment_pending.assessment_missing %}<p role="status">Assessment missing; saved research is pending assessment.</p>{% endif %}
+  {% for e in assessment_pending.pending_events %}<p role="status">{{ e.kind|title }} {{ e.event_id }} is saved; assessment pending.</p>{% endfor %}
   {% if property_loop_error %}<p role="alert">{{ property_loop_error }}</p>
   {% elif not property_loop %}<p>Waiting for the next saved-review assessment.</p>
   {% else %}
@@ -8,6 +10,13 @@
   <p>Experimental thresholds: {{ property_loop.policy.minimum_independent_dimensions }} independent dimensions; observations at most {{ property_loop.policy.fact_max_age_days }} days old; source checks flagged stale after {{ property_loop.policy.source_check_max_age_days }} days; up to {{ property_loop.policy.inventory_limit }} saved properties and {{ property_loop.policy.candidate_limit }} suggestions per explanation.</p>
   {% set assessment = property_loop.cases.get(case.case_id) %}
   {% if assessment %}
+  {% if assessment.evidence_assessment %}
+  <h3>How saved evidence affects this property</h3>
+  {% for reason in assessment.evidence_assessment.reasons %}<p>{{ reason }}</p>{% endfor %}
+  <p>Evidence used: {{ assessment.evidence_assessment.used_event_ids|join(', ') or 'None supported/current' }}. Original explanation retained; no seller ranking changed.</p>
+  <details><summary>Used, excluded and historical evidence</summary><pre>{{ assessment.evidence_assessment|tojson(indent=2) }}</pre></details>
+  <details><summary>Why this assessment changed</summary><pre>{{ property_loop.assessment_changes|default([])|selectattr('case_id', 'equalto', case.case_id)|list|tojson(indent=2) }}</pre></details>
+  {% endif %}
   <p>Latest source-check status: <strong>{{ assessment.sources.status }}</strong>. Retrieval time does not establish current occupancy or ownership.</p>
   {% for s in assessment.sources.retained %}
   <details><summary>{{ s.source_key }} — {{ s.validation }}{% if s.stale %} · STALE{% endif %}</summary>

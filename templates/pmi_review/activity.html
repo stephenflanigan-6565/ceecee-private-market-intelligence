@@ -1,0 +1,9 @@
+{% if activity %}<section class="panel" aria-label="Daily research activity">
+<h2>What's new / Needs review</h2><p>{{ activity.day }} (UTC) · Last successful source check: {{ activity.last_success or 'None recorded' }}.</p>
+<p>New candidates discovered: 0. This job checks existing inventory; it does not discover properties.</p>
+<p>Newly imported inventory: {{ activity.imported|length }} · Properties with saved updates: {{ activity.updated|length }} · Source checks today: {{ activity.runs|length }}.</p>
+{% for c in activity.imported %}<p>Imported: <a href="{{ url_for('pmi_review.case_detail', case_id=c.case_id) }}">{{ c.property_address }}</a></p>{% endfor %}
+{% for c in activity.updated %}<p>Updated: <a href="{{ url_for('pmi_review.case_detail', case_id=c.case_id) }}#review-work">{{ c.property_address }}</a> — {{ c.reasons|join(', ') }}</p>{% endfor %}
+{% for run in activity.runs %}<details><summary>{{ run.status }} — {{ run.reason }} · {{ run.completed_at or run.started_at }}</summary><a href="{{ url_for('pmi_review.case_detail', case_id=run.case_id) }}#cc-research">Review property check</a><p>Run {{ run.run_id }}</p><pre>{{ run.changes|tojson(indent=2) }}</pre></details>{% else %}<p>No source checks recorded today. This does not establish no market changes.</p>{% endfor %}
+<h3>Needs review</h3>{% for c in activity.needs_review %}<p><a href="{{ url_for('pmi_review.case_detail', case_id=c.case_id) }}#review-work">{{ c.property_address }}</a> — {{ c.pending_notes }} notes awaiting evidence review; {{ c.pending_events|length }} saved evidence/review records pending assessment; {% if c.assessment_missing %}assessment missing; {% endif %} check unresolved facts or contradictions.</p>{% else %}<p>No review items in the saved assessment.</p>{% endfor %}
+</section>{% endif %}

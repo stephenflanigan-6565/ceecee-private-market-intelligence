@@ -4,6 +4,7 @@ No source URLs are fetched. Constructors and read methods never create a
 file/table or analyze a case. initialize/import/evidence/review are explicit
 write operations; the HTTP layer is responsible for operator auth and CSRF.
 """
+from pmi_note_workflow import unknown, pending_assessment
 from contextlib import contextmanager
 import copy
 from datetime import date, datetime, timezone
@@ -230,7 +231,7 @@ class ReviewStore:
                     "source_path": "operator_evidence/facts/" + source_identity + "/" + data["field"],
                     "source_version": "OPERATOR_EVIDENCE_V1", "source_snapshot_hash": digest(data),
                     "source_route": None, "closed_explanation": False,
-                    "usable_for_pattern": not disabled and data["verified"] and data["current"] and data["usable"],
+                    "usable_for_pattern": not disabled and not unknown(data["value"]) and data["verified"] and data["current"] and data["usable"],
                     "source_evidence_context": {"source_url": data["source_url"], "source_record_id": data["source_record_id"], "observed_at": data["observed_at"], "case_id": baseline["case_id"], "parcel_id": baseline["parcel_id"], "property_address": baseline["property_address"], "market_code": baseline["market_code"], "quality_state": "SUPERSEDED" if disabled else "VERIFIED" if data["verified"] else "UNVERIFIED"},
                     "verification": {"verified_by": data["actor"], "verified": data["verified"], "basis": "TRUSTED_OPERATOR_ATTESTATION"},
                 })
@@ -406,12 +407,22 @@ class ReviewStore:
     def _refresh_learning_after_save(self):
         try:
             self.refresh_learning()
+            return 'ASSESSED'
         except Exception as error:
             # The operator's transaction already committed. A derived-report
             # error must not hide or roll back a successfully saved review.
             # Exception text may contain connection details or operator content;
             # log its class only, never database credentials or note bodies.
             logger.warning("PMI learning report refresh deferred after successful operator save (%s).", type(error).__name__)
+            return 'ASSESSMENT_FAILED_RETRY_PENDING'
+
+    def propose_note(self, case_id, note_id):
+        from pmi_note_workflow import propose
+        item = self.case(case_id)
+        note = next((n for n in item['notes'] if n['event_id'] == note_id), None)
+        if note is None:
+            raise ValueError('Choose an existing note on this property.')
+        return propose(note)
 
     def property_loop_report(self):
         """Read the last atomically committed assessment; never refresh on GET."""
@@ -420,6 +431,47 @@ class ReviewStore:
         from pmi_property_loop import latest
         with self._session(snapshot=True) as connection:
             return latest(self, connection)
+
+    def workflow_activity(self, day=None):
+        """Read-only daily ledger; research checks never masquerade as discovery."""
+        day = day or datetime.now(timezone.utc).date().isoformat()
+        with self._session(snapshot=True) as connection:
+            cases = self._list(connection)
+            from pmi_property_loop import latest
+            report = latest(self, connection) or {}
+            imported, updated, needs_review = [], [], []
+            for case in cases:
+                events = self._events(connection, case['case_id'])
+                imports = [e for e in events if e['kind'] == 'IMPORT']
+                if imports and imports[0]['recorded_at'][:10] == day:
+                    imported.append(case)
+                changes = [e for e in events if e['recorded_at'][:10] == day and e['kind'] in {'STATE', 'EVIDENCE', 'REVIEW'}]
+                if changes:
+                    updated.append({**case, 'reasons': [e['kind'] + ' saved' for e in changes]})
+                assessment = report.get('cases', {}).get(case['case_id'], {})
+                linked = {e['data'].get('note_id') for e in events if e['kind'] == 'EVIDENCE'}
+                pending_notes = [e['event_id'] for e in events if e['kind'] == 'STATE' and e['data'].get('note') and e['event_id'] not in linked]
+                pending = pending_assessment(events, assessment)
+                if pending['assessment_missing'] or pending['pending_events'] or pending_notes or (any(e['kind'] in {'EVIDENCE', 'REVIEW'} for e in events) and assessment.get('evidence_assessment', {}).get('needs_review')):
+                    needs_review.append({**case, 'pending_notes': len(pending_notes), **pending})
+            ready = (self._sql(connection, "SELECT to_regclass('pmi_research_runs')").fetchone()[0] is not None if self.postgres else
+                     self._sql(connection, "SELECT name FROM sqlite_master WHERE type='table' AND name='pmi_research_runs'").fetchone() is not None)
+            runs, last_success = [], None
+            if ready:
+                last_success = self._sql(connection, "SELECT MAX(completed_at) FROM pmi_research_runs WHERE status='SUCCESS'").fetchone()[0]
+                rows = self._sql(connection, 'SELECT run_id,case_id,status,started_at,completed_at,bundle_json FROM pmi_research_runs WHERE substr(started_at,1,10)=? ORDER BY started_at,run_id', (day,)).fetchall()
+                for rid, cid, status, started, completed, raw in rows:
+                    bundle = json.loads(raw) if raw else {}
+                    source_changes = [s.get('change_summary', {}) for s in bundle.get('sources', []) if isinstance(s.get('change_summary', {}), dict)]
+                    changed = any(s.get('status') == 'CHANGED' for s in source_changes)
+                    runs.append({'run_id': rid, 'case_id': cid, 'status': status, 'started_at': started,
+                        'completed_at': completed, 'changed': changed,
+                        'reason': 'Source records changed' if changed else 'No changes found' if status == 'SUCCESS' and source_changes and all(s.get('status') == 'UNCHANGED' for s in source_changes) else 'Check source result; first observation or incomplete check',
+                        'changes': source_changes})
+            return {'day': day, 'timezone': 'UTC', 'new_candidates': [], 'imported': imported,
+                    'updated': updated, 'needs_review': needs_review, 'runs': runs,
+                    'last_success': last_success, 'research_available': ready,
+                    'assessment_sequence': report.get('sequence')}
 
     def set_state(self, case_id, state, note, actor, event_id):
         self._require()
@@ -466,7 +518,14 @@ class ReviewStore:
         for field in ("case_id", "parcel_id", "property_address", "market_code"):
             if data.get(field) is not None and str(data[field]).strip().casefold() != str(baseline.get(field)).strip().casefold():
                 raise ValueError("Captured evidence identity must match this property case.")
-        result = {"kind": kind, "actor": actor, "observed_at": _date(data.get("observed_at")), **_source(data), "verified": _bool(data.get("verified", False), "Evidence verification"), "current": _bool(data.get("current", False), "Current evidence"), "usable": _bool(data.get("usable", True), "Usable evidence"), "detail": _text(data.get("detail", ""), "Evidence note", required=False), "supersedes": _text(data.get("supersedes") or None, "Correction identifier", 128, required=False)}
+        note_bridge = kind == 'FACT' and bool(data.get('note_id'))
+        dated = _date(data.get('observed_at')) if data.get('observed_at') or not note_bridge else None
+        sourced = _source(data) if any(data.get(k) for k in ('source_url', 'source_record_id', 'source_ref')) or not note_bridge else {'source_url': None, 'source_record_id': None}
+        if note_bridge and (data.get('verified') or data.get('current')) and (not dated or not any(sourced.values())):
+            raise ValueError('Source and actual observation date are required before confirming verified/current evidence.')
+        result = {"kind": kind, "actor": actor, "observed_at": dated, **sourced, "verified": _bool(data.get("verified", False), "Evidence verification"), "current": _bool(data.get("current", False), "Current evidence"), "usable": _bool(data.get("usable", True), "Usable evidence"), "detail": _text(data.get("detail", ""), "Evidence note", required=False), "supersedes": _text(data.get("supersedes") or None, "Correction identifier", 128, required=False)}
+        if note_bridge:
+            result.update(note_id=data['note_id'], supporting_passage=data.get('supporting_passage'))
         if kind == "FACT":
             field = _safe_field(data.get("field"))
             value = data.get("value")
@@ -498,6 +557,16 @@ class ReviewStore:
         _text(event_id, "Event identifier", 128)
         with self._session(write=True) as connection:
             document, _ = self._document(connection, case_id, lock=True)
+            if data.get('note_id'):
+                note = self._event(connection, data['note_id'])
+                passage = data.get('supporting_passage')
+                if (not note or note['case_id'] != case_id or note['kind'] != 'STATE'
+                        or not isinstance(passage, str) or not passage.strip()
+                        or passage not in note['data'].get('note', '')):
+                    raise ValueError('The supporting passage must be an exact quote from this property note.')
+                from pmi_note_workflow import FIELDS
+                if data.get('field') not in FIELDS or data.get('kind', 'FACT') != 'FACT':
+                    raise ValueError('Choose a supported property fact for this note.')
             normalized = self._evidence_data(document["baseline"], data, actor, event_id)
             if normalized["supersedes"]:
                 previous = self._event(connection, normalized["supersedes"])
@@ -511,8 +580,8 @@ class ReviewStore:
                 packet = self._apply_evidence(document["native_packet"], document["baseline"], self._events(connection, case_id))
                 document.update(packet=packet, analysis=analyze(packet, _TransactionMemory(connection, self.postgres)))
                 self._save(connection, document)
-        self._refresh_learning_after_save()
-        return self.case(case_id)
+        assessment_status = self._refresh_learning_after_save()
+        return {**self.case(case_id), 'save_receipt': {'event_id': event_id, 'saved': True, 'assessment_status': assessment_status}}
 
     def _selection_review_snapshot(self, connection, case_id, data):
         # Resolve the exact retained version, never trust a client explanation.
@@ -561,8 +630,8 @@ class ReviewStore:
             if fresh:
                 document["analysis"] = analyze(document["packet"], memory)
                 self._save(connection, document)
-        self._refresh_learning_after_save()
-        return self.case(case_id)
+        assessment_status = self._refresh_learning_after_save()
+        return {**self.case(case_id), 'save_receipt': {'event_id': event_id, 'saved': True, 'assessment_status': assessment_status}}
 
     def export_payload(self):
         self._require()

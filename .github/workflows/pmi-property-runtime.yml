@@ -1,7 +1,7 @@
 name: PMI isolated property runtime
 on:
   push:
-    branches: [codex/five-pilot-runtime]
+    branches: [codex/five-pilot-runtime, codex/note-evidence-workflow]
 permissions:
   contents: read
 jobs:
@@ -37,7 +37,7 @@ jobs:
           import os, unittest, psycopg
           with psycopg.connect(os.environ['PMI_TEST_POSTGRES_DSN']) as c:
               print('POSTGRES_VERSION', c.info.server_version)
-          suite = unittest.defaultTestLoader.loadTestsFromName('test_property_loop_runtime')
+          suite = unittest.defaultTestLoader.loadTestsFromNames(['test_property_loop_runtime', 'test_note_workflow'])
           r = unittest.TextTestRunner(verbosity=2).run(suite)
           print('RUNTIME_RESULT', r.testsRun, 'tests', len(r.failures), 'failures', len(r.errors), 'errors', len(r.skipped), 'skips')
           if not r.wasSuccessful() or r.testsRun < 12 or r.skipped:
