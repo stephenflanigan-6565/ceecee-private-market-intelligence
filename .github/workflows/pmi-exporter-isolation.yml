@@ -1,70 +1,52 @@
-name: PMI synthetic exporter isolation
+name: PMI bounded measured resource check
 on:
   push:
     branches: [codex/exporter-interruption-isolation]
 permissions:
   contents: read
 jobs:
-  isolated:
+  measured:
     runs-on: ubuntu-24.04
     timeout-minutes: 12
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: pmi_test
-          POSTGRES_PASSWORD: disposable_test_only
-          POSTGRES_DB: pmi_export_synthetic
-        ports: ['5432:5432']
-        options: >-
-          --health-cmd "pg_isready -U pmi_test -d pmi_export_synthetic"
-          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: python -m pip install 'Flask>=3,<4' 'psycopg[binary]>=3.2,<4' psutil
-      - name: Baseline crash regression reproduction
-        env:
-          PYTHONPATH: .:tests
-          PMI_EXPORT_TEST_PG: '1'
+      - run: pip install itsdangerous
+      - name: Build isolated app and private disposable database
         run: |
-          mkdir -p /tmp/pmi-export-baseline results
-          git archive f63bdca08d971ee58e25483f3dfd387e2e0a31e8 | tar -x -C /tmp/pmi-export-baseline
-          cp tests/test_exporter_interruption.py /tmp/pmi-export-baseline/tests/
-          cp tests/exporter_memory_probe.py /tmp/pmi-export-baseline/tests/
-          set +e
-          (cd /tmp/pmi-export-baseline && python -m unittest test_exporter_interruption.InterruptionSQLite test_exporter_interruption.InterruptionPostgres -v) > results/baseline-tests.txt 2>&1
-          result=$?
-          set -e
-          cat results/baseline-tests.txt
-          test "$result" -eq 1
-      - name: Corrected crash locking history and regression checks
-        env:
-          PYTHONPATH: .:tests
-          PMI_EXPORT_TEST_PG: '1'
+          mkdir -p results
+          docker build -f tests/Resource.Dockerfile -t pmi-resource .
+          docker network create --internal pmi-resource-net
+          docker run -d --name pmi-resource-db --network pmi-resource-net --memory 1g -e POSTGRES_USER=pmi_test -e POSTGRES_PASSWORD=disposable_test_only -e POSTGRES_DB=pmi_resource postgres:17
+          for n in $(seq 1 30); do docker exec pmi-resource-db pg_isready -U pmi_test -d pmi_resource && break; sleep 1; done
+      - name: Prepare exact measured synthetic fixture and unconstrained reference
         run: |
-          set -o pipefail
-          python -m unittest test_exporter_interruption.InterruptionSQLite test_exporter_interruption.InterruptionPostgres test_drive_export_service test_drive_export_worker test_drive_export_integration test_google_drive_client test_research_export_snapshot -v 2>&1 | tee results/candidate-tests.txt
-      - name: Two-process memory baseline and candidate
-        env:
-          PYTHONPATH: .:tests
+          docker run --rm --network pmi-resource-net --memory 2g --memory-swap 2g -v "$PWD/results:/results" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource pmi-resource python tests/resource_prepare.py --reference
+      - name: Bounded full app and real multipart checks
         run: |
-          set -o pipefail
-          for variant in baseline candidate; do
-            root="$GITHUB_WORKSPACE"
-            if [ "$variant" = baseline ]; then root=/tmp/pmi-export-baseline; fi
-            for notes in 1000 5000; do
-              python tests/exporter_memory_probe.py --root "$root" --notes "$notes" | tee "results/memory-$variant-$notes.json"
-            done
-            python tests/exporter_memory_probe.py --root "$root" --notes 1000 --fail | tee "results/memory-$variant-failed-upload.json"
+          for scenario in original-multipart original-export raised-cap-multipart; do
+            mode=original; action=export
+            if [ "$scenario" = original-multipart ]; then action=multipart; fi
+            if [ "$scenario" = raised-cap-multipart ]; then mode=raised-cap; action=multipart; fi
+            docker run --rm --network pmi-resource-net --memory 2g --memory-swap 2g -v "$PWD/results:/results" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource pmi-resource python tests/resource_prepare.py
+            docker run -d --name pmi-resource-app --network pmi-resource-net --memory 512m --memory-swap 512m --cpus 1 -p 127.0.0.1:8080:8080 -v "$PWD/results:/results" -e RESOURCE_MODE="$mode" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource pmi-resource
+            python tests/resource_driver.py results "$mode" "$action"
+            docker logs pmi-resource-app > "results/log-$scenario.txt" 2>&1
+            docker inspect pmi-resource-app --format '{{json .State}}' > "results/state-$scenario.json"
+            docker rm -f pmi-resource-app
           done
+          cat results/reference-report.json
+          cat results/stages.jsonl
+          cat results/log-*.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: synthetic-exporter-results
-          path: results/
+          name: measured-resource-results
+          path: |
+            results/*.json
+            results/*.jsonl
+            results/*.txt
