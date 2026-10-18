@@ -1,4 +1,4 @@
-name: PMI bounded measured resource check
+name: PMI isolated complete backup repair
 on:
   push:
     branches: [codex/exporter-interruption-isolation]
@@ -7,7 +7,7 @@ permissions:
 jobs:
   measured:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
@@ -16,39 +16,39 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install itsdangerous
-      - name: Build isolated app and private disposable database
+      - name: Build isolated app and disposable databases
         run: |
           mkdir -p results
           docker build -f tests/Resource.Dockerfile -t pmi-resource .
           docker network create --internal pmi-resource-net
           docker run -d --name pmi-resource-db --network pmi-resource-net --memory 1g -e POSTGRES_USER=pmi_test -e POSTGRES_PASSWORD=disposable_test_only -e POSTGRES_DB=pmi_resource postgres:17
           for n in $(seq 1 30); do docker exec pmi-resource-db pg_isready -U pmi_test -d pmi_resource && break; sleep 1; done
-      - name: Changed budget boundary and preservation checks
-        run: |
           docker exec pmi-resource-db createdb -U pmi_test pmi_export_synthetic
-          docker run --rm --network container:pmi-resource-db -e PMI_EXPORT_TEST_PG=1 pmi-resource python -m unittest test_export_budget.SQLiteBudget.test_budget_exact_boundary test_export_budget.SQLiteBudget.test_reject_before_snapshot_preserves_history_and_reports_failure test_export_budget.SQLiteBudget.test_small_export_still_verified test_export_budget.PostgresBudget.test_budget_exact_boundary test_export_budget.PostgresBudget.test_reject_before_snapshot_preserves_history_and_reports_failure test_export_budget.PostgresBudget.test_small_export_still_verified -v
-      - name: Prepare exact measured synthetic fixture and unconstrained reference
+          docker exec pmi-resource-db createdb -U pmi_test pmi_restore_synthetic
+      - name: Changed SQLite PostgreSQL restore and retry tests
+        run: |
+          docker run --rm --network container:pmi-resource-db --memory 512m --memory-swap 512m -e PMI_EXPORT_TEST_PG=1 pmi-resource python -m unittest test_backup_parts.PartsSQLite test_backup_parts.PartsPostgres -v
+      - name: Measured fixture and original format reference
         run: |
           docker run --rm --network pmi-resource-net --memory 2g --memory-swap 2g -v "$PWD/results:/results" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource pmi-resource python tests/resource_prepare.py --reference
-      - name: Bounded full app and real multipart checks
+      - name: Full app upload readback restore and worker interruption under 512 MiB
         run: |
-          for scenario in guarded-export; do
-            mode=guarded; action=export
+          for mode in parts parts-interrupt; do
+            db=$(echo "$mode" | tr '-' '_')
+            docker exec pmi-resource-db createdb -U pmi_test "restore_$db"
             docker run --rm --network pmi-resource-net --memory 2g --memory-swap 2g -v "$PWD/results:/results" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource pmi-resource python tests/resource_prepare.py
-            docker run -d --name pmi-resource-app --network pmi-resource-net --memory 512m --memory-swap 512m --cpus 1 -p 127.0.0.1:8080:8080 -v "$PWD/results:/results" -e RESOURCE_MODE="$mode" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource pmi-resource
-            python tests/resource_driver.py results "$mode" "$action"
-            docker logs pmi-resource-app > "results/log-$scenario.txt" 2>&1
-            docker inspect pmi-resource-app --format '{{json .State}}' > "results/state-$scenario.json"
+            docker run -d --name pmi-resource-app --network pmi-resource-net --memory 512m --memory-swap 512m --cpus 1 -v "$PWD/results:/results" -e RESOURCE_MODE="$mode" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource -e RESTORE_DATABASE_URL="postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/restore_$db" pmi-resource gunicorn --workers 2 --threads 4 --timeout 60 --bind 0.0.0.0:8080 parts_resource_app:app
+            python tests/parts_resource_driver.py results "$mode" export
+            docker logs pmi-resource-app > "results/log-$mode.txt" 2>&1
+            docker inspect pmi-resource-app --format '{{json .State}}' > "results/state-$mode.json"
             docker run --rm --network pmi-resource-net --memory 2g --memory-swap 2g -v "$PWD/results:/results" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource pmi-resource python tests/resource_prepare.py --verify-after
             docker rm -f pmi-resource-app
           done
-          cat results/reference-report.json
           cat results/stages.jsonl
-          cat results/log-*.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: measured-resource-results
+          name: complete-backup-resource-results
           path: |
             results/*.json
             results/*.jsonl

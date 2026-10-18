@@ -9,10 +9,11 @@ import hashlib
 import json
 import os
 import uuid
+import tempfile
 
 from pmi_review_store import ReviewStore
 
-FORMAT_VERSION = "PMI_DAILY_RESEARCH_EXPORT_V1"
+FORMAT_VERSION = "PMI_RESEARCH_PARTS_V2"
 CASE_ID = "workspace:drive-export"
 LOCK_ID = 73421629
 LEASE_SECONDS = 600
@@ -218,48 +219,39 @@ class DriveExportService:
                 target_fingerprint = _hash(_bytes({"principal": principal_id, "folder": folder_id, "format": FORMAT_VERSION}))
                 if verified and verified["target_fingerprint"] != target_fingerprint:
                     verified = None
-                phase = "resource_preflight"
-                from pmi_export_budget import check_retained_payload_budget
-                check_retained_payload_budget(self.store)
                 phase = "snapshot"
-                from pmi_research_export import validate_snapshot, build_summary
-                snapshot = self.store.research_export_snapshot()
-                validate_snapshot(snapshot)
-                completed_exports = {row.get("export_id") for row in rows if row["kind"] == "DRIVE_EXPORT_VERIFIED"}
-                prior = next((row for row in reversed(rows) if row.get("config_digest") == config_digest and row.get("target_fingerprint") == target_fingerprint and row.get("source_revision") == snapshot["source_revision"] and row.get("export_id") not in completed_exports and row.get("export_id")), None)
-                artifact_at = _instant(prior["generated_at"]) if prior else now
-                snapshot["generated_at"] = _stamp(artifact_at)
-                day = artifact_at.date().isoformat()
-                export_id = prior["export_id"] if prior else "pmi:" + _hash(_bytes({
-                    "config": config_digest, "target": target_fingerprint,
-                    "day": day, "source": snapshot["source_revision"],
-                }))
-                name = "PMI-Research-" + day + "-" + snapshot["source_revision"][:12]
-                json_content = _bytes(snapshot)
-                summary_content = build_summary(snapshot).encode("utf-8")
-                claim = self._append("DRIVE_EXPORT_RUNNING", {
-                    "outcome": "RUNNING", "run_id": run_id,
-                    "worker_id": worker_id or "manual", "mode": "DAILY" if verified else "BOOTSTRAP",
-                    "config_digest": config_digest, "target_fingerprint": target_fingerprint,
-                    "principal_id": principal_id, "folder_id": folder_id,
-                    "source_revision": snapshot["source_revision"], "export_id": export_id,
-                    "generated_at": snapshot["generated_at"], "format": FORMAT_VERSION,
-                    "lease_until": _stamp(now + timedelta(seconds=LEASE_SECONDS)),
-                }, now)
-                phase = "upload"
-                json_file = client.upload(folder_id, name + ".json", "application/json", json_content, export_id, "json")
-                summary_file = client.upload(folder_id, name + ".md", "text/markdown", summary_content, export_id, "summary")
-                phase = "readback"
-                read_json = client.download(json_file["id"])
-                read_summary = client.download(summary_file["id"])
-                if not isinstance(read_json, bytes) or _hash(read_json) != _hash(json_content):
-                    raise ValueError("JSON readback mismatch")
-                restored = json.loads(read_json.decode("utf-8"))
-                validate_snapshot(restored)
-                if restored["manifest"]["source_counts"] != snapshot["manifest"]["source_counts"] or restored["manifest"]["exported_counts"] != snapshot["manifest"]["exported_counts"]:
-                    raise ValueError("Readback reconciliation mismatch")
-                if read_summary != summary_content:
-                    raise ValueError("Summary readback mismatch")
+                from pmi_backup_parts import build_package, deliver, encoded, verify_parts
+                with tempfile.TemporaryDirectory(prefix="pmi-backup-") as spool:
+                    package = build_package(self.store, spool)
+                    verify_parts(package, spool)
+                    completed_exports = {row.get("export_id") for row in rows if row["kind"] == "DRIVE_EXPORT_VERIFIED"}
+                    prior = next((row for row in reversed(rows) if row.get("config_digest") == config_digest and row.get("target_fingerprint") == target_fingerprint and row.get("source_revision") == package["source_revision"] and row.get("export_id") not in completed_exports and row.get("export_id")), None)
+                    artifact_at = _instant(prior["generated_at"]) if prior else now
+                    package["generated_at"] = _stamp(artifact_at)
+                    export_id = prior["export_id"] if prior else "pmi:" + _hash(_bytes({"config": config_digest, "target": target_fingerprint, "day": artifact_at.date().isoformat(), "source": package["source_revision"]}))
+                    counts = {table: value["count"] for table, value in package["tables"].items()}
+                    claim = self._append("DRIVE_EXPORT_RUNNING", {
+                        "outcome": "RUNNING", "run_id": run_id,
+                        "worker_id": worker_id or "manual", "mode": "DAILY" if verified else "BOOTSTRAP",
+                        "config_digest": config_digest, "target_fingerprint": target_fingerprint,
+                        "principal_id": principal_id, "folder_id": folder_id,
+                        "source_revision": package["source_revision"], "export_id": export_id,
+                        "generated_at": package["generated_at"], "format": FORMAT_VERSION,
+                        "lease_until": _stamp(now + timedelta(seconds=LEASE_SECONDS)),
+                    }, now)
+                    phase = "upload_readback"
+                    json_file = deliver(client, folder_id, package, spool, export_id)
+                    summary_content = ("# PMI complete research backup (parts V2)\n\n"
+                        + "Manifest and all listed parts are required for restore. All table rows reconcile.\n"
+                        + "No research history was trimmed. Credential fields and operational leases are excluded; delivery receipts are not research.\n"
+                        + "Source revision: " + package["source_revision"] + "\n"
+                        + "Serialized record bytes: " + str(package["serialized_bytes"]) + "\n"
+                        + "\n".join(table + ": " + str(count) for table, count in counts.items()) + "\n").encode("utf-8")
+                    summary_file = client.upload(folder_id, "PMI-"+package["source_revision"][:12]+"-summary.md", "text/markdown", summary_content, export_id, "summary")
+                    phase = "readback"
+                    if client.download(summary_file["id"]) != summary_content:
+                        raise ValueError("Summary readback mismatch")
+                    manifest_sha = _hash(encoded(package))
                 phase = "folder_readback"
                 checked_folder = client.verify_private_folder(folder_id)
                 if checked_folder["id"] != folder_id:
@@ -272,10 +264,10 @@ class DriveExportService:
                     "daily_enabled": True,
                     "json_id": json_file["id"], "json_url": json_file.get("webViewLink"),
                     "summary_id": summary_file["id"], "summary_url": summary_file.get("webViewLink"),
-                    "json_sha256": _hash(json_content), "summary_sha256": _hash(summary_content),
-                    "source_counts": snapshot["manifest"]["source_counts"],
-                    "exported_counts": snapshot["manifest"]["exported_counts"],
-                    "review_counts": snapshot["review_counts"],
+                    "json_sha256": manifest_sha, "summary_sha256": _hash(summary_content),
+                    "source_counts": counts,
+                    "exported_counts": counts,
+                    "review_counts": None,
                 }, completed_at)
                 return {"status": "VERIFIED", "daily_enabled": True,
                         "verified_at": receipt["verified_at"], "next_due_at": receipt["next_due_at"]}
