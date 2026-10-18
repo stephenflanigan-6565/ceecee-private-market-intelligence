@@ -234,8 +234,10 @@ def create_blueprint(source_loader, *, store_factory=None, research_factory=None
             loop = reader() if reader else None
         except Exception:
             loop_error = 'Property comparison is temporarily unavailable; saved reviews are retained.'
+        from pmi_note_workflow import pending_assessment
+        pending = pending_assessment(item.get("history", []), (loop or {}).get("cases", {}).get(case_id))
         return render_template("pmi_review/case.html", **context(ready=True, case=item, error=error, counts=counts,
-                               property_loop=loop, property_loop_error=loop_error,
+                               property_loop=loop, property_loop_error=loop_error, assessment_pending=pending,
                                note_proposals=[review_store.propose_note(case_id, n['event_id']) for n in item.get('notes', [])] if hasattr(review_store, 'propose_note') else [],
                                research_status=research_status, research_result=research_result, research_error=research_error,
                                event_ids=ids, previous_case=ordered[pos-1] if pos else None,

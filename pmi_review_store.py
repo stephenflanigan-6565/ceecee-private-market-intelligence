@@ -4,6 +4,7 @@ No source URLs are fetched. Constructors and read methods never create a
 file/table or analyze a case. initialize/import/evidence/review are explicit
 write operations; the HTTP layer is responsible for operator auth and CSRF.
 """
+from pmi_note_workflow import unknown, pending_assessment
 from contextlib import contextmanager
 import copy
 from datetime import date, datetime, timezone
@@ -230,7 +231,7 @@ class ReviewStore:
                     "source_path": "operator_evidence/facts/" + source_identity + "/" + data["field"],
                     "source_version": "OPERATOR_EVIDENCE_V1", "source_snapshot_hash": digest(data),
                     "source_route": None, "closed_explanation": False,
-                    "usable_for_pattern": not disabled and data["verified"] and data["current"] and data["usable"],
+                    "usable_for_pattern": not disabled and not unknown(data["value"]) and data["verified"] and data["current"] and data["usable"],
                     "source_evidence_context": {"source_url": data["source_url"], "source_record_id": data["source_record_id"], "observed_at": data["observed_at"], "case_id": baseline["case_id"], "parcel_id": baseline["parcel_id"], "property_address": baseline["property_address"], "market_code": baseline["market_code"], "quality_state": "SUPERSEDED" if disabled else "VERIFIED" if data["verified"] else "UNVERIFIED"},
                     "verification": {"verified_by": data["actor"], "verified": data["verified"], "basis": "TRUSTED_OPERATOR_ATTESTATION"},
                 })
@@ -450,8 +451,9 @@ class ReviewStore:
                 assessment = report.get('cases', {}).get(case['case_id'], {})
                 linked = {e['data'].get('note_id') for e in events if e['kind'] == 'EVIDENCE'}
                 pending_notes = [e['event_id'] for e in events if e['kind'] == 'STATE' and e['data'].get('note') and e['event_id'] not in linked]
-                if pending_notes or (any(e['kind'] in {'EVIDENCE', 'REVIEW'} for e in events) and assessment.get('evidence_assessment', {}).get('needs_review')):
-                    needs_review.append({**case, 'pending_notes': len(pending_notes)})
+                pending = pending_assessment(events, assessment)
+                if pending['assessment_missing'] or pending['pending_events'] or pending_notes or (any(e['kind'] in {'EVIDENCE', 'REVIEW'} for e in events) and assessment.get('evidence_assessment', {}).get('needs_review')):
+                    needs_review.append({**case, 'pending_notes': len(pending_notes), **pending})
             ready = (self._sql(connection, "SELECT to_regclass('pmi_research_runs')").fetchone()[0] is not None if self.postgres else
                      self._sql(connection, "SELECT name FROM sqlite_master WHERE type='table' AND name='pmi_research_runs'").fetchone() is not None)
             runs, last_success = [], None

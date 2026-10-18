@@ -3,7 +3,7 @@ from datetime import date, datetime, timezone
 import json
 from seller_ai_memory import canonical, digest
 from pmi_case_sources import _valid_url, SOURCE_SPECS
-from pmi_note_workflow import unknown, assessment as evidence_assessment, FIELDS
+from pmi_note_workflow import normalize, unknown, assessment as evidence_assessment, FIELDS
 
 VERSION = "PMI_PROPERTY_LOOP_RUNTIME_V2"
 POLICY = {"experimental": True, "fact_max_age_days": 30, "source_check_max_age_days": 2,
@@ -38,7 +38,11 @@ def checked_sources(case, sources):
 
 def explicit_facts(case, as_of, max_age_days):
     facts, excluded, conflicts = {}, [], []
+    superseded = {e["data"].get("supersedes") for e in case.get("evidence", [])}
+
     for event in case.get("evidence", []):
+        if event["event_id"] in superseded:
+            continue
         data = event["data"]
         field = data.get("field")
         if data.get("kind") != "FACT" or field not in set(DIMENSIONS) | set(FIELDS):
@@ -62,13 +66,11 @@ def explicit_facts(case, as_of, max_age_days):
     # Explicit supersession only. Newer timestamps alone never erase disagreement.
     # An explicit correction can retract certainty to unknown. Keep the old
     # record, but never resurrect it merely because its correction is uncertain.
-    superseded = {e['data'].get('supersedes') for e in case.get('evidence', []) if e['data'].get('supersedes')}
     usable = {}
     for field, values in facts.items():
-        values = [v for v in values if v["event_id"] not in superseded]
         if not values:
             continue
-        if len({str(v["value"]).casefold() for v in values}) > 1:
+        if len({normalize(v["value"]) for v in values}) > 1:
             conflicts.append({"field": field, "observations": values})
         else:
             usable[field] = values
@@ -175,10 +177,10 @@ def comparisons(seed, finding, cases, assessments, as_of):
                       and f['assessment'] in {'REVIEW_CONTRADICTS_ORIGINAL', 'CONFLICTING_FINDINGS'}
                       for f in candidate_assessment['findings'])
         facts, excluded, conflicts = explicit_facts(case, as_of, POLICY['fact_max_age_days'])
-        shared = [f for f in seed_facts if f in DIMENSIONS and f in facts and str(seed_facts[f][0]['value']).casefold() == str(facts[f][0]['value']).casefold()]
+        shared = [f for f in seed_facts if f in DIMENSIONS and f in facts and normalize(seed_facts[f][0]['value']) == normalize(facts[f][0]['value'])]
         differences = [f for f in seed_facts if f in DIMENSIONS and f in facts and f not in shared]
         status_fields = ('listing_status', 'representation_status')
-        status_conflict = any(f in seed_facts and f in facts and str(seed_facts[f][0]['value']).casefold() != str(facts[f][0]['value']).casefold() for f in status_fields)
+        status_conflict = any(f in seed_facts and f in facts and normalize(seed_facts[f][0]['value']) != normalize(facts[f][0]['value']) for f in status_fields)
         reason = ('REVIEWED_CONTRADICTION' if blocked else 'NO_SUPPORTED_SHARED_EXPLANATION' if not matches
                   else 'DIFFERENT_SUPPORTED_LISTING_OR_REPRESENTATION_STATUS' if status_conflict
                   else 'CONTRADICTORY_OBSERVATIONS' if conflicts or differences

@@ -36,3 +36,9 @@ Live records were not changed or re-exported during this patch. Existing version
 5. If code checks fail, redeploy/revert code to `6860e9c71b3dfba813dd5e43a44dfbfd9f74f05c` through the existing process. Do not restore/reset the database. New evidence has ordinary FACT fields plus optional note provenance, so old readers retain the records. The hosting UI previously showed one-click rollback unavailable; code rollback remains the documented path, not a tested one-click promise.
 
 Remaining live checks: approved deployment revision, real note confirmation/readback and Cece usability, one real daily-cycle outcome and visible report, full export preservation comparison. No synthetic test completes these checks.
+
+## PR 10 review corrections (18 October)
+
+Unknown values share case/whitespace/separator normalization in property comparisons, packet support and reviewed pattern support; raw originals remain unchanged. UNAVAILABLE and NOT ESTABLISHED cannot support matches. Explicitly superseded facts are removed before current exclusions are calculated, preserving history while clearing obsolete unknown/stale/unverified flags. Unrelated unresolved notes or facts still require review.
+
+The property page and daily review queue compare saved EVIDENCE/REVIEW event IDs with consumed assessment IDs, including absent assessments and plain page reopen. Pending evidence is distinct from evidence used as support. Two independent authenticated clients concurrently confirm one note in the new regression; only one evidence event and version may persist. SQLite and PostgreSQL run these same cases. No schema, selection thresholds, production data or deployment changes.

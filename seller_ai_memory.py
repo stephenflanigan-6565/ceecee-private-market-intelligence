@@ -3,6 +3,7 @@
 SQLite is an explicit local development store. The PostgreSQL adapter uses the
 same schema but requires an operator-applied migration; it never creates tables.
 """
+from pmi_note_workflow import unknown, normalize
 from contextlib import contextmanager
 from datetime import datetime, timezone
 import hashlib
@@ -336,11 +337,11 @@ class ReviewMemory:
                     field = tokens[-1] if tokens else ""
                 value = item.get("value")
                 expected = clause["value"]
-                same = (" ".join(value.casefold().split()) == " ".join(expected.casefold().split())
+                same = (normalize(value) == normalize(expected)
                         if isinstance(value, str) and isinstance(expected, str)
                         else type(value) is type(expected) and value == expected)
                 if (field == clause["field"] and same and not item.get("closed_explanation", False)
-                        and item.get("usable_for_pattern", True) is not False):
+                        and not unknown(value) and item.get("usable_for_pattern", True) is not False):
                     matching.append(item)
             token = canonical(clause)
             if matching and token not in seen:

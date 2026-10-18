@@ -1,13 +1,25 @@
 """Bounded, operator-confirmed note bridge. No source lookup or seller scoring."""
 import re
 
-UNKNOWN = {'unknown', 'not known', 'unsure', 'n/a', 'none', 'not supplied', '', 'unverified'}
+UNKNOWN = {'unknown', 'not known', 'unsure', 'n/a', 'none', 'not supplied', '', 'unverified',
+           'unavailable', 'not established', 'not available', 'not applicable', 'null'}
 FIELDS = ('listing_status', 'representation_status', 'condition', 'project_status',
           'property_form', 'current_use', 'occupancy_status', 'acquisition_context')
 
 
+def normalize(value):
+    return re.sub(r'[\s_-]+', ' ', str('' if value is None else value).strip().casefold())
+
+
 def unknown(value):
-    return str(value).strip().casefold() in UNKNOWN
+    return normalize(value) in UNKNOWN
+
+
+def pending_assessment(events, assessment):
+    consumed = set((assessment or {}).get('consumed_event_ids', []))
+    pending = [{'event_id': e['event_id'], 'kind': e['kind']} for e in events
+               if e['kind'] in {'EVIDENCE', 'REVIEW'} and e['event_id'] not in consumed]
+    return {'assessment_missing': not bool(assessment), 'pending_events': pending}
 
 
 def propose(note):
@@ -32,7 +44,7 @@ def propose(note):
 
 def assessment(facts, excluded, conflicts, evidence):
     """Evidence context qualifies research; never changes seller ranks or intent."""
-    values = {field: str(rows[0]['value']).strip().upper().replace(' ', '_')
+    values = {field: normalize(rows[0]['value']).upper().replace(' ', '_')
               for field, rows in facts.items()}
     listing = values.get('listing_status', 'UNKNOWN')
     representation = values.get('representation_status', 'UNKNOWN')

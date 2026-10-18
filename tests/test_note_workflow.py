@@ -190,6 +190,108 @@ class WorkflowChecks:
             event['data']['value'] = 'UNKNOWN'
         self.assertEqual(explicit_facts(cases[0], datetime.now(timezone.utc).date(), 30)[0], {})
 
+
+    def test_unknown_variants_never_support_comparisons_or_patterns(self):
+        from pmi_note_workflow import unknown
+        from pmi_property_loop import comparisons
+        from seller_ai import _matches
+        from test_review_store import payload
+        self.store.import_payload(payload(2), 'fixture')
+        ids = [c['case_id'] for c in self.store.list_cases()]
+        today = datetime.now(timezone.utc).date()
+        for cid in ids:
+            for field, value in [('project_status', '  UnAvAiLaBlE  '), ('property_form', ' NOT\t ESTABLISHED ')]:
+                self.store.add_evidence(cid, {'field': field, 'value': value,
+                    'source_record_id': 'SYNTHETIC', 'observed_at': today.isoformat(),
+                    'verified': True, 'current': True}, 'fixture', cid + field)
+        cases = [self.store.case(cid) for cid in ids]
+        finding = {'assessment': 'REVIEW_SUPPORTS_PROPERTY_RESEARCH', 'current_baseline_matches': True,
+                   'original_explanation': {'route': 'LAND_PROPERTY_UTILIZATION'}}
+        result = comparisons(cases[0], finding, cases, self.store.property_loop_report()['cases'], today)
+        self.assertEqual(result['candidates'], [])
+        for case in cases:
+            self.assertEqual(explicit_facts(case, today, 30)[0], {})
+        for value in [None, '', ' UNKNOWN ', 'not\nknown', 'UNAVAILABLE', ' Not   Established ',
+                      'NOT_ESTABLISHED', 'not-established', ' UnVerified ', 'N/A']:
+            self.assertTrue(unknown(value), repr(value))
+            self.assertEqual(_matches([{'field': 'project_status', 'value': value}],
+                                      {'field': 'project_status', 'value': value}), [])
+        self.assertFalse(unknown(False))
+        self.assertFalse(unknown(0))
+
+    def test_superseded_unknown_stale_unverified_clear_current_flags(self):
+        from pmi_note_workflow import pending_assessment
+        today = datetime.now(timezone.utc).date().isoformat()
+        # Isolate the review queue from unrelated fixture notes.
+        for note in self.store.case(self.cid)['notes']:
+            p = self.store.propose_note(self.cid, note['event_id'])
+            self.submit(p, field='listing_status', value='SOLD', verified='on', current='on',
+                        observed_at=today, source_ref='SYNTHETIC')
+        for label, changes in [('unknown', {'value': 'NOT ESTABLISHED'}),
+                               ('stale', {'observed_at': '2000-01-01'}),
+                               ('unverified', {'verified': False})]:
+            with self.subTest(label=label):
+                data = {'field': 'condition', 'value': 'DATED', 'source_record_id': 'SYNTHETIC',
+                        'observed_at': today, 'verified': True, 'current': True, **changes}
+                self.store.add_evidence(self.cid, data, 'fixture', 'old-' + label)
+                self.assertTrue(self.store.property_loop_report()['cases'][self.cid]['evidence_assessment']['needs_review'])
+                self.store.add_evidence(self.cid, {**data, 'value': 'RENOVATED', 'observed_at': today,
+                    'verified': True, 'supersedes': 'old-' + label}, 'fixture', 'new-' + label)
+                case = self.store.case(self.cid)
+                report = self.store.property_loop_report()['cases'][self.cid]
+                self.assertFalse(report['evidence_assessment']['needs_review'])
+                self.assertEqual(report['excluded_observations'], [])
+                self.assertTrue(next(e for e in case['evidence'] if e['event_id'] == 'old-' + label)['superseded'])
+                self.assertEqual(pending_assessment(case['history'], report)['pending_events'], [])
+                self.assertNotIn(self.cid, [c['case_id'] for c in self.store.workflow_activity()['needs_review']])
+
+    def test_pending_events_survive_plain_reopen_missing_and_failed_assessment(self):
+        p = self.proposal()
+        before = self.store.property_loop_report()
+        with patch.object(self.store, 'refresh_learning', side_effect=RuntimeError('fixture')):
+            self.submit(p)
+            self.store.review(self.cid, SelectionLoopChecks.data(self), 'fixture', 'pending-review')
+        events = [e for e in self.store.case(self.cid)['history'] if e['kind'] in {'EVIDENCE', 'REVIEW'}]
+        for report in [None, {**before, 'cases': {}}, before]:
+            with self.subTest(report=bool(report)):
+                with patch.object(self.store, 'property_loop_report', return_value=report), patch('pmi_property_loop.latest', return_value=report):
+                    page = self.page().get_data(as_text=True)
+                    row = next(c for c in self.store.workflow_activity()['needs_review'] if c['case_id'] == self.cid)
+                    self.assertEqual({e['event_id'] for e in row['pending_events']}, {e['event_id'] for e in events})
+                    for e in events:
+                        self.assertIn(e['event_id'] + ' is saved; assessment pending', page)
+                    self.assertIn('saved evidence/review records pending assessment', self.client.get('/review/').get_data(as_text=True))
+        self.store.refresh_learning()
+        row = next(c for c in self.store.workflow_activity()['needs_review'] if c['case_id'] == self.cid)
+        self.assertEqual(row['pending_events'], [])
+        self.assertNotIn('is saved; assessment pending', self.page().get_data(as_text=True))
+
+    def test_simultaneous_duplicate_confirmations_save_once(self):
+        from concurrent.futures import ThreadPoolExecutor
+        from threading import Barrier
+        p = self.proposal()
+        barrier = Barrier(2)
+        before = self.rows('pmi_review_case_versions')
+        def confirm():
+            client = self.app.test_client()
+            login = client.get('/review/')
+            client.post('/review/login', data={'csrf_token': self.token(login),
+                        'access_key': 'SYNTHETIC-local-only-login-passphrase'})
+            page = client.get('/review/cases/' + self.cid)
+            form = {'csrf_token': self.token(page), 'note_id': p['note_id'],
+                    'supporting_passage': p['passage'], 'field': p['field'],
+                    'value': p['value'], 'confirm': 'on'}
+            barrier.wait(timeout=15)
+            return client.post('/review/cases/' + self.cid + '/note-evidence', data=form).status_code
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            futures = [pool.submit(confirm) for _ in range(2)]
+            self.assertEqual([f.result(timeout=30) for f in futures], [303, 303])
+        case = self.store.case(self.cid)
+        self.assertEqual(len(case['evidence']), 1)
+        self.assertEqual(len(self.rows('pmi_review_case_versions') - before), 1)
+        self.assertEqual(self.store.property_loop_report()['cases'][self.cid]['consumed_event_ids'],
+                         [case['evidence'][0]['event_id']])
+
 class WorkflowSQLiteTests(WorkflowChecks, unittest.TestCase):
     postgres = False
 
