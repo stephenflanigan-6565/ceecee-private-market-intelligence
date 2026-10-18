@@ -171,6 +171,25 @@ class WorkflowChecks:
             with self.assertRaises(ValueError):
                 self.store.propose_note(cid, 'five-' + next(n for n in ids if n != name))
 
+    def test_listing_difference_and_unknown_dimensions_affect_comparisons(self):
+        from pmi_property_loop import comparisons
+        from test_review_store import payload
+        self.store.import_payload(payload(2), 'fixture')
+        ids = [c['case_id'] for c in self.store.list_cases()]
+        today = datetime.now(timezone.utc).date().isoformat()
+        for cid in ids:
+            for field, value in [('property_form', 'COTTAGE'), ('project_status', 'COMPLETED'), ('listing_status', 'SOLD' if cid == ids[0] else 'LISTED')]:
+                self.store.add_evidence(cid, {'field': field, 'value': value, 'source_record_id': 'SYNTHETIC', 'observed_at': today, 'current': True, 'verified': True}, 'fixture', cid + field)
+        finding = {'assessment': 'REVIEW_SUPPORTS_PROPERTY_RESEARCH', 'current_baseline_matches': True,
+                   'original_explanation': {'route': 'LAND_PROPERTY_UTILIZATION'}}
+        cases = [self.store.case(cid) for cid in ids]
+        result = comparisons(cases[0], finding, cases, self.store.property_loop_report()['cases'], datetime.now(timezone.utc).date())
+        self.assertEqual(result['candidates'], [])
+        self.assertEqual(result['excluded'][0]['reason'], 'DIFFERENT_SUPPORTED_LISTING_OR_REPRESENTATION_STATUS')
+        for event in cases[0]['evidence']:
+            event['data']['value'] = 'UNKNOWN'
+        self.assertEqual(explicit_facts(cases[0], datetime.now(timezone.utc).date(), 30)[0], {})
+
 class WorkflowSQLiteTests(WorkflowChecks, unittest.TestCase):
     postgres = False
 

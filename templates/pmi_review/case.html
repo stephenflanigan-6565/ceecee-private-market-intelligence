@@ -68,7 +68,7 @@
   {% endfor %}
   {% else %}<div class="panel quiet-panel"><h3>Seller circumstances still need evidence</h3><p>The current record contains no supported seller explanation to review. Check the property findings below and add a source-backed observation when you find one.</p></div>{% endif %}
   {% if baseline.hypotheses %}<div class="panel imported-findings"><h3>Retained property research</h3><p class="muted">These findings explain why the property entered research. Their status does not establish the owner’s plans.</p>{% for finding in baseline.hypotheses %}<details class="source-details"><summary><span>{{ finding.route|default('Property explanation')|replace('_', ' ')|title }}</span><span class="badge badge-outline">{{ finding.disposition|default('Research')|replace('_', ' ')|title }}</span></summary><div class="details-body">
-<details class="capture-details"><summary>Reviewed finding — original property explanation</summary>
+<details class="capture-details" open><summary>Reviewed finding — original property explanation</summary>
 <div class="details-body"><p>Record what your investigation established about this explanation. Notes stay unchanged; this does not confirm a seller's plans.</p>
 <form method="post" action="{{ url_for('pmi_review.submit_review', case_id=case.case_id) }}">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

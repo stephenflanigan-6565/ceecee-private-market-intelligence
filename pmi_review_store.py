@@ -450,7 +450,7 @@ class ReviewStore:
                 assessment = report.get('cases', {}).get(case['case_id'], {})
                 linked = {e['data'].get('note_id') for e in events if e['kind'] == 'EVIDENCE'}
                 pending_notes = [e['event_id'] for e in events if e['kind'] == 'STATE' and e['data'].get('note') and e['event_id'] not in linked]
-                if pending_notes or assessment.get('evidence_assessment', {}).get('needs_review'):
+                if pending_notes or (any(e['kind'] in {'EVIDENCE', 'REVIEW'} for e in events) and assessment.get('evidence_assessment', {}).get('needs_review')):
                     needs_review.append({**case, 'pending_notes': len(pending_notes)})
             ready = (self._sql(connection, "SELECT to_regclass('pmi_research_runs')").fetchone()[0] is not None if self.postgres else
                      self._sql(connection, "SELECT name FROM sqlite_master WHERE type='table' AND name='pmi_research_runs'").fetchone() is not None)
