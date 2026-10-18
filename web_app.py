@@ -41,6 +41,9 @@ from authoritative_research_evidence_memory_v17d import build_authoritative_rese
 
 app = Flask(__name__)
 
+from pmi_public_info import bp as public_info_blueprint
+app.register_blueprint(public_info_blueprint)
+
 # Isolated operator review; FIND4 is invoked only after an authenticated POST.
 from pmi_review import create_blueprint as create_pmi_review_blueprint
 
