@@ -28,7 +28,7 @@ SAFE_DRIVE_ERRORS = frozenset({
     "invalid_report_folder", "folder_not_app_managed", "drive_lookup_incomplete",
     "invalid_folder_name", "ambiguous_report_folder", "invalid_artifact",
     "artifact_too_large", "invalid_artifact_identity", "ambiguous_artifact",
-    "artifact_metadata_mismatch", "artifact_unavailable",
+    "artifact_metadata_mismatch", "artifact_unavailable", "retained_payload_budget_exceeded",
 })
 
 
@@ -218,6 +218,9 @@ class DriveExportService:
                 target_fingerprint = _hash(_bytes({"principal": principal_id, "folder": folder_id, "format": FORMAT_VERSION}))
                 if verified and verified["target_fingerprint"] != target_fingerprint:
                     verified = None
+                phase = "resource_preflight"
+                from pmi_export_budget import check_retained_payload_budget
+                check_retained_payload_budget(self.store)
                 phase = "snapshot"
                 from pmi_research_export import validate_snapshot, build_summary
                 snapshot = self.store.research_export_snapshot()

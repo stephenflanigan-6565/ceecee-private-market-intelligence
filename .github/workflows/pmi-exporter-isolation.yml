@@ -23,20 +23,23 @@ jobs:
           docker network create --internal pmi-resource-net
           docker run -d --name pmi-resource-db --network pmi-resource-net --memory 1g -e POSTGRES_USER=pmi_test -e POSTGRES_PASSWORD=disposable_test_only -e POSTGRES_DB=pmi_resource postgres:17
           for n in $(seq 1 30); do docker exec pmi-resource-db pg_isready -U pmi_test -d pmi_resource && break; sleep 1; done
+      - name: Changed budget boundary and preservation checks
+        run: |
+          docker exec pmi-resource-db createdb -U pmi_test pmi_export_synthetic
+          docker run --rm --network container:pmi-resource-db -e PMI_EXPORT_TEST_PG=1 pmi-resource python -m unittest test_export_budget.SQLiteBudget.test_budget_exact_boundary test_export_budget.SQLiteBudget.test_reject_before_snapshot_preserves_history_and_reports_failure test_export_budget.SQLiteBudget.test_small_export_still_verified test_export_budget.PostgresBudget.test_budget_exact_boundary test_export_budget.PostgresBudget.test_reject_before_snapshot_preserves_history_and_reports_failure test_export_budget.PostgresBudget.test_small_export_still_verified -v
       - name: Prepare exact measured synthetic fixture and unconstrained reference
         run: |
           docker run --rm --network pmi-resource-net --memory 2g --memory-swap 2g -v "$PWD/results:/results" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource pmi-resource python tests/resource_prepare.py --reference
       - name: Bounded full app and real multipart checks
         run: |
-          for scenario in original-multipart original-export raised-cap-multipart; do
-            mode=original; action=export
-            if [ "$scenario" = original-multipart ]; then action=multipart; fi
-            if [ "$scenario" = raised-cap-multipart ]; then mode=raised-cap; action=multipart; fi
+          for scenario in guarded-export; do
+            mode=guarded; action=export
             docker run --rm --network pmi-resource-net --memory 2g --memory-swap 2g -v "$PWD/results:/results" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource pmi-resource python tests/resource_prepare.py
             docker run -d --name pmi-resource-app --network pmi-resource-net --memory 512m --memory-swap 512m --cpus 1 -p 127.0.0.1:8080:8080 -v "$PWD/results:/results" -e RESOURCE_MODE="$mode" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource pmi-resource
             python tests/resource_driver.py results "$mode" "$action"
             docker logs pmi-resource-app > "results/log-$scenario.txt" 2>&1
             docker inspect pmi-resource-app --format '{{json .State}}' > "results/state-$scenario.json"
+            docker run --rm --network pmi-resource-net --memory 2g --memory-swap 2g -v "$PWD/results:/results" -e DATABASE_URL=postgresql://pmi_test:disposable_test_only@pmi-resource-db:5432/pmi_resource pmi-resource python tests/resource_prepare.py --verify-after
             docker rm -f pmi-resource-app
           done
           cat results/reference-report.json

@@ -6,6 +6,13 @@ from pmi_review_store import ReviewStore
 from pmi_research_store import ResearchStore
 from pmi_drive_export_service import _bytes
 root=Path('/results'); path=root/'fixture.sqlite'
+if '--verify-after' in sys.argv:
+ store=ReviewStore(os.environ['DATABASE_URL']); result=store.research_export_snapshot()
+ reference=json.loads((root/'reference.json').read_text())
+ assert result['source_revision']==reference['source_revision']
+ assert result['manifest']['source_counts']==reference['manifest']['source_counts']
+ print(json.dumps({'research_preserved':True,'source_revision':result['source_revision'],'counts':result['manifest']['source_counts']}))
+ sys.exit(0)
 if not path.exists(): build(path)
 store=ReviewStore(os.environ['DATABASE_URL']); store.initialize(); ResearchStore(store.dsn).initialize()
 src=sqlite3.connect(path); src.row_factory=sqlite3.Row

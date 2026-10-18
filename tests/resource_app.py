@@ -5,6 +5,9 @@ from test_google_drive_client import FakeGoogle,Response
 from pmi_google_drive import GoogleDriveClient
 from pmi_drive_export_service import DriveExportService
 from test_exporter_interruption import ENV
+if os.getenv('RESOURCE_MODE')!='guarded':
+ import pmi_export_budget
+ pmi_export_budget.check_retained_payload_budget=lambda store: None # original behavior control only
 
 ROOT=Path('/results')
 def stage(name,**fields):

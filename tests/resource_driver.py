@@ -33,7 +33,9 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
  while time.monotonic()<deadline and not all(t.done() for t in tasks):
   responses.append(get(['/health','/review/',case_path][len(responses)%3],3)); time.sleep(.2)
  outcomes=[t.result() for t in tasks]
+post=[]
+for p in ['/health','/review/',case_path]*4:
+ post.append(get(p)); time.sleep(.2)
 final=metric()
-report={'mode':mode,'action':action,'memory_limit_bytes':536870912,'baseline_metrics':initial,'final_metrics':final,'baseline_requests':baseline,'concurrent_requests':responses,'outcomes':outcomes}
+report={'mode':mode,'action':action,'memory_limit_bytes':536870912,'baseline_metrics':initial,'final_metrics':final,'baseline_requests':baseline,'concurrent_requests':responses,'post_requests':post,'outcomes':outcomes}
 root.joinpath('run-'+mode+'-'+action+'.json').write_text(json.dumps(report,indent=2)); print(json.dumps(report))
-
