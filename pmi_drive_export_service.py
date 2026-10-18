@@ -9,7 +9,7 @@ import hashlib
 import json
 import os
 import uuid
-import tempfile
+
 
 from pmi_review_store import ReviewStore
 
@@ -220,8 +220,8 @@ class DriveExportService:
                 if verified and verified["target_fingerprint"] != target_fingerprint:
                     verified = None
                 phase = "snapshot"
-                from pmi_backup_parts import build_package, deliver, encoded, verify_parts
-                with tempfile.TemporaryDirectory(prefix="pmi-backup-") as spool:
+                from pmi_backup_parts import build_package, deliver, encoded, verify_parts, spool_directory
+                with spool_directory(self.store) as spool:
                     package = build_package(self.store, spool)
                     verify_parts(package, spool)
                     completed_exports = {row.get("export_id") for row in rows if row["kind"] == "DRIVE_EXPORT_VERIFIED"}
@@ -275,9 +275,12 @@ class DriveExportService:
                 # Never save OAuth responses, exception text or credentials.
                 failed_at = _instant(self.clock())
                 from pmi_google_drive import DriveError
+                from pmi_backup_parts import BackupError
                 error_code = "EXPORT_VERIFICATION_FAILED" if phase in {"readback", "folder_readback"} else "EXPORT_FAILED"
                 http_status = None
-                if isinstance(error, DriveError):
+                if isinstance(error, BackupError):
+                    error_code = error.code
+                elif isinstance(error, DriveError):
                     if error.code in SAFE_DRIVE_ERRORS:
                         error_code = error.code
                     if type(error.http_status) is int and 100 <= error.http_status <= 599:

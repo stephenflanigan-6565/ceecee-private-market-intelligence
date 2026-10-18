@@ -33,7 +33,7 @@ def kill_interrupted():
  while time.monotonic()<deadline and not marker.exists(): time.sleep(.05)
  if marker.exists():
   pid=json.loads(marker.read_text())['pid']
-  subprocess.run(['docker','exec','pmi-resource-app','kill','-9',str(pid)],check=True)
+  subprocess.run(['docker','exec','pmi-resource-app','python','-c','import os,sys; os.kill(int(sys.argv[1]),9)',str(pid)],check=True)
 if mode=='parts-interrupt':
  killer=threading.Thread(target=kill_interrupted); killer.start()
 

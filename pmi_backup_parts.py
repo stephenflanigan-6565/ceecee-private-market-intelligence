@@ -7,6 +7,8 @@ disk failures and malformed packages fail explicitly; no truncation occurs.
 import hashlib
 import json
 import os
+import tempfile
+from contextlib import contextmanager
 from pathlib import Path
 
 from pmi_research_export import without_secrets
@@ -32,11 +34,37 @@ EXCLUSIONS = {'memory_kind_prefix': 'DRIVE_EXPORT_',
  'credential_fields': 'existing without_secrets policy',
  'lease_token_and_worker_id': 'empty or null; never restored as active capability'}
 
+class BackupError(ValueError):
+ """Fixed, credential-free failure code safe for the export ledger."""
+ @property
+ def code(self): return self.args[0]
+
 def encoded(value):
  return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')
 
 def sha(data):
  return hashlib.sha256(data).hexdigest()
+
+@contextmanager
+def spool_directory(store):
+ """Call only while holding this database's export coordination lock.
+
+Reclaim this exporter's abandoned part files after process death. Never follow
+symlinks or remove unknown contents; fail closed rather than delete user data.
+"""
+ base=Path(tempfile.gettempdir())/('pmi-research-v2-'+sha(store.dsn.encode())[:24])
+ base.mkdir(mode=0o700,exist_ok=True)
+ if base.is_symlink(): raise BackupError('backup_spool_unsafe')
+ for directory in base.iterdir():
+  if directory.is_symlink() or not directory.is_dir() or not directory.name.startswith('attempt-'):
+   raise BackupError('backup_spool_unsafe')
+  files=list(directory.iterdir())
+  if any(p.is_symlink() or not p.is_file() or not p.name.startswith('part-') or p.suffix!='.jsonl' for p in files):
+   raise BackupError('backup_spool_unsafe')
+  for p in files: p.unlink()
+  directory.rmdir()
+ with tempfile.TemporaryDirectory(prefix='attempt-',dir=base) as directory:
+  yield directory
 
 def condition(table):
  return " WHERE SUBSTR(kind,1,13)<>'DRIVE_EXPORT_'" if table == 'pmi_ai_review_records' else ''
@@ -60,7 +88,7 @@ def rows(store, connection, table):
  length = 'octet_length' if store.postgres else 'length'
  terms = [f'COALESCE({length}(CAST({c} AS '+('TEXT' if store.postgres else 'BLOB')+')),0)' for c in columns]
  largest = store._sql(connection, 'SELECT COALESCE(max('+ '+'.join(terms)+'),0) FROM '+table+condition(table)).fetchone()[0]
- if largest > ROW_BYTES: raise ValueError('backup_record_too_large')
+ if largest > ROW_BYTES: raise BackupError('backup_record_too_large')
  order = 'case_id,source_key' if table == 'pmi_research_sources' else columns[0]
  sql = 'SELECT '+','.join(columns)+' FROM '+table+condition(table)+' ORDER BY '+order
  cursor = connection.cursor(name='backup_'+table) if store.postgres else connection.cursor()
@@ -79,7 +107,7 @@ def build_package(store, directory):
  def flush():
   if not buffer: return
   index = len(manifest['parts'])
-  if index >= MAX_PARTS: raise ValueError('backup_package_too_large')
+  if index >= MAX_PARTS: raise BackupError('backup_package_too_large')
   path = directory / ('part-%04d.jsonl' % index)
   with path.open('xb') as stream:
    stream.write(buffer); stream.flush(); os.fsync(stream.fileno())
@@ -94,11 +122,11 @@ def build_package(store, directory):
    digest = hashlib.sha256(); count = 0
    for row in rows(store, connection, table):
     line = encoded([table, row]) + b'\n'
-    if len(line) > PART_BYTES: raise ValueError('backup_encoded_record_too_large')
+    if len(line) > PART_BYTES: raise BackupError('backup_encoded_record_too_large')
     if len(buffer) + len(line) > PART_BYTES: flush()
     buffer.extend(line); digest.update(line); count += 1
-   if count != expected: raise ValueError('backup_snapshot_count_mismatch')
-   manifest['tables'][table] = {'columns': columns, 'count': count, 'sha256': digest.hexdigest()}
+   if count != expected: raise BackupError('backup_snapshot_count_mismatch')
+   manifest['tables'][table] = {'columns': list(columns), 'count': count, 'sha256': digest.hexdigest()}
  flush()
  manifest['source_revision'] = sha(encoded(manifest['tables']))
  manifest['serialized_bytes'] = sum(p['bytes'] for p in manifest['parts'])
@@ -106,42 +134,42 @@ def build_package(store, directory):
 
 def validate_manifest(manifest):
  if manifest.get('version') != VERSION or manifest.get('complete') is not True or manifest.get('exclusions') != EXCLUSIONS:
-  raise ValueError('invalid_backup_manifest')
+  raise BackupError('invalid_backup_manifest')
  if set(manifest['tables']) != set(TABLES) or len(manifest['parts']) > MAX_PARTS:
-  raise ValueError('invalid_backup_tables')
+  raise BackupError('invalid_backup_tables')
  for table, columns in TABLES.items():
   entry = manifest['tables'][table]
   if entry['columns'] != columns or type(entry['count']) is not int or entry['count'] < 0:
-   raise ValueError('invalid_backup_schema')
+   raise BackupError('invalid_backup_schema')
  if manifest['source_revision'] != sha(encoded(manifest['tables'])):
-  raise ValueError('invalid_backup_revision')
+  raise BackupError('invalid_backup_revision')
  for i, part in enumerate(manifest['parts']):
   if part['index'] != i or type(part['bytes']) is not int or not 0 < part['bytes'] <= PART_BYTES:
-   raise ValueError('invalid_backup_part')
+   raise BackupError('invalid_backup_part')
  if manifest['serialized_bytes'] != sum(p['bytes'] for p in manifest['parts']):
-  raise ValueError('invalid_backup_size')
+  raise BackupError('invalid_backup_size')
 
 def verify_parts(manifest, directory):
  validate_manifest(manifest)
  counts = {t: 0 for t in TABLES}; hashes = {t: hashlib.sha256() for t in TABLES}
  for part in manifest['parts']:
   path = Path(directory) / ('part-%04d.jsonl' % part['index'])
-  if path.stat().st_size != part['bytes']: raise ValueError('backup_part_size_mismatch')
+  if path.stat().st_size != part['bytes']: raise BackupError('backup_part_size_mismatch')
   with path.open('rb') as stream:
    digest = hashlib.sha256()
    while True:
     line = stream.readline(PART_BYTES + 1)
     if not line: break
-    if len(line) > PART_BYTES or not line.endswith(b'\n'): raise ValueError('invalid_backup_record')
+    if len(line) > PART_BYTES or not line.endswith(b'\n'): raise BackupError('invalid_backup_record')
     table, row = json.loads(line)
     if table not in TABLES or not isinstance(row, list) or len(row) != len(TABLES[table]) or encoded([table,row])+b'\n' != line:
-     raise ValueError('invalid_backup_record')
-    if any(v is not None and type(v) not in (str, int) for v in row): raise ValueError('invalid_backup_value')
+     raise BackupError('invalid_backup_record')
+    if any(v is not None and type(v) not in (str, int) for v in row): raise BackupError('invalid_backup_value')
     digest.update(line); hashes[table].update(line); counts[table] += 1
-   if digest.hexdigest() != part['sha256']: raise ValueError('backup_part_hash_mismatch')
+   if digest.hexdigest() != part['sha256']: raise BackupError('backup_part_hash_mismatch')
  for table in TABLES:
   if counts[table] != manifest['tables'][table]['count'] or hashes[table].hexdigest() != manifest['tables'][table]['sha256']:
-   raise ValueError('backup_table_mismatch')
+   raise BackupError('backup_table_mismatch')
  return counts
 
 def deliver(client, folder_id, manifest, directory, export_id):
@@ -153,23 +181,24 @@ def deliver(client, folder_id, manifest, directory, export_id):
   uploaded = client.upload(folder_id, path.name, 'application/x-ndjson', data, export_id, 'part-%04d' % part['index'])
   readback = client.download(uploaded['id'])
   if len(readback) != part['bytes'] or sha(readback) != part['sha256']:
-   raise ValueError('backup_readback_mismatch')
+   raise BackupError('backup_readback_mismatch')
   part['file_id'] = uploaded['id']
   del data, readback
  content = encoded(manifest)
- if len(content) > 1024*1024: raise ValueError('backup_manifest_too_large')
+ if len(content) > 1024*1024: raise BackupError('backup_manifest_too_large')
  result = client.upload(folder_id, 'PMI-'+manifest['source_revision'][:12]+'-manifest.json', 'application/json', content, export_id, 'manifest')
- if client.download(result['id']) != content: raise ValueError('backup_manifest_readback_mismatch')
+ if client.download(result['id']) != content: raise BackupError('backup_manifest_readback_mismatch')
  return result
 
-def retrieve(client, manifest_id, directory):
+def retrieve(client, manifest_id, directory, *, expected_sha256):
  """Retrieve and reconcile remote records without trusting local spool files."""
  raw = client.download(manifest_id)
- if len(raw) > 1024*1024: raise ValueError('backup_manifest_too_large')
+ if sha(raw) != expected_sha256: raise BackupError('backup_manifest_readback_mismatch')
+ if len(raw) > 1024*1024: raise BackupError('backup_manifest_too_large')
  manifest = json.loads(raw); validate_manifest(manifest)
  for part in manifest['parts']:
   content = client.download(part['file_id'])
-  if len(content) != part['bytes'] or sha(content) != part['sha256']: raise ValueError('backup_readback_mismatch')
+  if len(content) != part['bytes'] or sha(content) != part['sha256']: raise BackupError('backup_readback_mismatch')
   with (Path(directory)/('part-%04d.jsonl' % part['index'])).open('xb') as stream:
    stream.write(content)
   del content
@@ -186,7 +215,7 @@ Callers must keep the destination app/schedulers stopped during restore.
  with store._session(write=True) as connection:
   for table in TABLES:
    if store._sql(connection, 'SELECT count(*) FROM '+table).fetchone()[0]:
-    raise ValueError('restore_requires_empty_database')
+    raise BackupError('restore_requires_empty_database')
   for part in manifest['parts']:
    with (Path(directory)/('part-%04d.jsonl' % part['index'])).open('rb') as stream:
     for line in stream:
@@ -199,5 +228,5 @@ Callers must keep the destination app/schedulers stopped during restore.
    for row in rows(store, connection, table):
     digest.update(encoded([table,row])+b'\n'); count += 1
    if count != manifest['tables'][table]['count'] or digest.hexdigest() != manifest['tables'][table]['sha256']:
-    raise ValueError('restore_reconciliation_failed')
+    raise BackupError('restore_reconciliation_failed')
  return {t: manifest['tables'][t]['count'] for t in TABLES}

@@ -46,7 +46,7 @@ class PartsSQLite(unittest.TestCase):
   folder=self.client.ensure_private_folder('synthetic',None)['id']
   remote=parts.deliver(self.client,folder,manifest,directory,'synthetic-export')
   retrieved=self.root/'retrieved'; retrieved.mkdir()
-  downloaded=parts.retrieve(self.client,remote['id'],retrieved)
+  downloaded=parts.retrieve(self.client,remote['id'],retrieved,expected_sha256=parts.sha(parts.encoded(manifest)))
   destination=self.destination()
   counts=parts.restore(destination,downloaded,retrieved)
   self.assertEqual(counts,before['manifest']['source_counts'])
@@ -104,6 +104,35 @@ class PartsSQLite(unittest.TestCase):
    with self.assertRaises(OSError): parts.build_package(self.store,directory)
   with patch.object(parts,'MAX_PARTS',0):
    with self.assertRaisesRegex(ValueError,'package_too_large'): parts.build_package(self.store,self.root/'unused')
+
+ def test_manifest_trust_and_schema_rejected(self):
+  manifest,directory=self.package()
+  remote=parts.deliver(self.client,'private-folder',manifest,directory,'synthetic-export')
+  with self.assertRaisesRegex(ValueError,'manifest_readback_mismatch'):
+   parts.retrieve(self.client,remote['id'],directory,expected_sha256='0'*64)
+  manifest['tables']['pmi_review_events']['columns'][0]='unexpected_column'
+  with self.assertRaisesRegex(ValueError,'invalid_backup_schema'): parts.validate_manifest(manifest)
+
+ def test_failure_code_and_first_receipt_fail_closed(self):
+  with patch.object(parts,'ROW_BYTES',10):
+   self.assertEqual(self.service.poll()['status'],'FAILED')
+  self.assertEqual(self.service.status()['error_code'],'backup_record_too_large')
+  self.assertEqual(self.service.status()['failure_stage'],'snapshot')
+  identities=self.client.identities
+  with patch.object(self.service,'_append',side_effect=OSError('synthetic ledger unavailable')):
+   with self.assertRaises(OSError): self.service.poll(force=True)
+  self.assertEqual(self.client.identities,identities)
+
+ def test_abandoned_spool_cleanup_and_unknown_file_protection(self):
+  with patch.object(parts.tempfile,'gettempdir',return_value=str(self.root)):
+   base=self.root/('pmi-research-v2-'+parts.sha(self.store.dsn.encode())[:24])
+   old=base/'attempt-abandoned'; old.mkdir(parents=True)
+   (old/'part-0000.jsonl').write_bytes(b'synthetic abandoned upload')
+   with parts.spool_directory(self.store): self.assertFalse(old.exists())
+   unknown=base/'do-not-delete'; unknown.write_text('synthetic user file')
+   with self.assertRaisesRegex(ValueError,'spool_unsafe'):
+    with parts.spool_directory(self.store): pass
+   self.assertTrue(unknown.exists())
 
 @unittest.skipUnless(os.getenv('PMI_EXPORT_TEST_PG')=='1','disposable PG not configured')
 class PartsPostgres(PartsSQLite):

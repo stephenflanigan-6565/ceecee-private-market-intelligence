@@ -74,10 +74,10 @@ def export():
 @app.get('/_test/restore')
 def restore_test():
  service=DriveExportService(os.environ['DATABASE_URL'],environment=ENV,client_factory=client)
- manifest_id=next(row['json_id'] for row in reversed(service._rows()) if row['kind']=='DRIVE_EXPORT_VERIFIED')
+ receipt=next(row for row in reversed(service._rows()) if row['kind']=='DRIVE_EXPORT_VERIFIED'); manifest_id=receipt['json_id']
  outcomes={}
  with tempfile.TemporaryDirectory() as spool:
-  manifest=retrieve(client(),manifest_id,spool)
+  manifest=retrieve(client(),manifest_id,spool,expected_sha256=receipt['json_sha256'])
   for kind,dsn in [('sqlite',str(ROOT/('restored-'+os.getenv('RESOURCE_MODE','parts')+'.sqlite'))),('postgres',os.environ['RESTORE_DATABASE_URL'])]:
    dest=ReviewStore(dsn); dest.initialize(); ResearchStore(dsn).initialize()
    with dest._session(write=True) as c: dest._sql(c,'DELETE FROM pmi_research_control') # disposable bootstrap only
