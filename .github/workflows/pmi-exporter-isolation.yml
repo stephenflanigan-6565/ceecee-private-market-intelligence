@@ -22,7 +22,7 @@ jobs:
           docker build -f tests/Resource.Dockerfile -t pmi-resource .
           docker network create --internal pmi-resource-net
           docker run -d --name pmi-resource-db --network pmi-resource-net --memory 1g -e POSTGRES_USER=pmi_test -e POSTGRES_PASSWORD=disposable_test_only -e POSTGRES_DB=pmi_resource postgres:17
-          for n in $(seq 1 30); do docker exec pmi-resource-db pg_isready -U pmi_test -d pmi_resource && break; sleep 1; done
+          for n in $(seq 1 30); do docker exec pmi-resource-db pg_isready -h 127.0.0.1 -U pmi_test -d pmi_resource && break; sleep 1; done
           docker exec pmi-resource-db createdb -U pmi_test pmi_export_synthetic
           docker exec pmi-resource-db createdb -U pmi_test pmi_restore_synthetic
       - name: Changed SQLite PostgreSQL restore and retry tests
@@ -53,3 +53,4 @@ jobs:
             results/*.json
             results/*.jsonl
             results/*.txt
+
