@@ -10,7 +10,7 @@ jobs:
     timeout-minutes: 12
     services:
       postgres:
-        image: postgres:16
+        image: postgres:17
         env:
           POSTGRES_USER: pmi_test
           POSTGRES_PASSWORD: disposable_test_only
@@ -48,11 +48,13 @@ jobs:
           PYTHONPATH: .:tests
           PMI_EXPORT_TEST_PG: '1'
         run: |
+          set -o pipefail
           python -m unittest test_exporter_interruption.InterruptionSQLite test_exporter_interruption.InterruptionPostgres test_drive_export_service test_drive_export_worker test_drive_export_integration test_google_drive_client test_research_export_snapshot -v 2>&1 | tee results/candidate-tests.txt
       - name: Two-process memory baseline and candidate
         env:
           PYTHONPATH: .:tests
         run: |
+          set -o pipefail
           for variant in baseline candidate; do
             root="$GITHUB_WORKSPACE"
             if [ "$variant" = baseline ]; then root=/tmp/pmi-export-baseline; fi

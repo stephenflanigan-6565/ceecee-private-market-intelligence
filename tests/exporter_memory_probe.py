@@ -19,7 +19,7 @@ def imports(root):
     sys.path[:0] = [str(root), str(Path(root) / "tests")]
 
 
-def worker(root, dsn, files, result, gate, fail):
+def worker(root, dsn, files, result, gate, release, fail):
     imports(root)
     from pmi_drive_export_service import DriveExportService
     from test_exporter_interruption import ENV
@@ -60,6 +60,8 @@ def worker(root, dsn, files, result, gate, fail):
     stopped.set(); thread.join()
     Path(result).write_text(json.dumps({"outcome": answer, "seconds": time.monotonic()-started,
         "peak_rss_bytes": peak[0], "stages": stages, "status": service.status()}))
+    # Keep the BUSY peer resident, as an idle application worker would be.
+    release.wait(120)
 
 
 def main(root, notes, fail):
@@ -85,8 +87,9 @@ def main(root, notes, fail):
         with tempfile.TemporaryDirectory() as folder:
             ctx = mp.get_context("spawn")
             gate = ctx.Event()
+            release = ctx.Event()
             processes = [ctx.Process(target=worker, args=(root, fixture.dsn, folder,
-                str(Path(folder, str(i)+".json")), gate, fail)) for i in range(2)]
+                str(Path(folder, str(i)+".json")), gate, release, fail)) for i in range(2)]
             for process in processes: process.start()
             gate.set()
             peak_sum = 0
@@ -97,6 +100,8 @@ def main(root, notes, fail):
                     try: rss += psutil.Process(p.pid).memory_info().rss
                     except psutil.NoSuchProcess: pass
                 peak_sum = max(peak_sum, rss)
+                if all(Path(folder, str(i)+".json").exists() for i in range(2)):
+                    release.set()
                 time.sleep(.01)
             for p in processes:
                 if p.is_alive(): p.terminate()
@@ -106,7 +111,7 @@ def main(root, notes, fail):
                 "source_counts": counts, "workers": rows, "peak_two_workers_rss_bytes": peak_sum,
                 "artifact_bytes": Path(folder, "json").stat().st_size if Path(folder, "json").exists() else None,
                 "exitcodes": [p.exitcode for p in processes],
-                "measurement": "10ms aggregate RSS; 5ms per worker; excludes fixture generator and DB server; disk fake Drive"}))
+                "measurement": "10ms aggregate RSS with BUSY peer resident; 5ms per worker; excludes fixture generator and DB server; disk fake Drive"}))
             assert all(p.exitcode == 0 for p in processes)
             statuses = sorted(r["outcome"]["status"] for r in rows)
             assert statuses == sorted(["BUSY", "FAILED" if fail else "VERIFIED"]), statuses
