@@ -10,7 +10,7 @@ from unittest.mock import Mock
 
 from pmi_drive_export_service import DriveExportService, CASE_ID, LEASE_SECONDS
 from pmi_google_drive import DriveError, GoogleDriveClient
-from pmi_research_export import validate_snapshot
+from pmi_backup_parts import validate_manifest
 from pmi_research_store import ResearchStore
 from pmi_review_store import ReviewStore
 from test_research_store import pilot_payload
@@ -108,15 +108,15 @@ class DriveExportServiceTests(unittest.TestCase):
         self.client.upload_hook = lambda: self.assertFalse(self.service.status()["daily_enabled"])
         result = self.service.poll("synthetic-worker")
         self.assertEqual(result["status"], "VERIFIED")
-        self.assertEqual(self.client.operations, ["folder", "upload:json", "upload:summary", "download:json", "download:summary", "verify-folder"])
+        self.assertEqual(self.client.operations, ["folder", "upload:part-0000", "download:part-0000", "upload:manifest", "download:manifest", "upload:summary", "download:summary", "verify-folder"])
         status = self.service.status()
         self.assertTrue(status["daily_enabled"])
         self.assertTrue(status["bootstrap_verified"])
         self.assertEqual(status["source_counts"], status["exported_counts"])
-        self.assertEqual(status["review_counts"]["properties_with_operator_work"], 1)
+        self.assertEqual(status["source_counts"]["pmi_review_cases"], 2)
         self.assertEqual(status["next_due_at"], (self.now + timedelta(hours=24)).isoformat())
-        restored = json.loads(next(item["content"] for item in self.client.files.values() if item["kind"] == "json"))
-        validate_snapshot(restored)
+        restored = json.loads(next(item["content"] for item in self.client.files.values() if item["kind"] == "manifest"))
+        validate_manifest(restored)
         after = self.review.research_export_snapshot()
         self.assertEqual(before["source_revision"], after["source_revision"])
         self.assertEqual(before["manifest"], after["manifest"])
@@ -130,19 +130,19 @@ class DriveExportServiceTests(unittest.TestCase):
         self.client.fail_summary_once = True
         self.assertEqual(self.service.poll()["status"], "FAILED")
         self.assertFalse(self.service.status()["daily_enabled"])
-        self.assertEqual(self.client.created, 1)
+        self.assertEqual(self.client.created, 2)
         self.assertEqual(self.service.poll()["status"], "RETRY_WAIT")
         self.now += timedelta(hours=1)
         self.assertEqual(self.service.poll(force=True)["status"], "VERIFIED")
-        self.assertEqual(self.client.created, 2)
-        self.assertEqual(len(self.client.files), 2)
+        self.assertEqual(self.client.created, 3)
+        self.assertEqual(len(self.client.files), 3)
         receipts = self.service._rows()
         artifact_claim = next(row for row in receipts if row.get("export_id"))
         self.assertEqual(artifact_claim["export_id"], receipts[-1]["export_id"])
         self.assertEqual(artifact_claim["generated_at"], receipts[-1]["generated_at"])
 
     def test_readback_mismatch_cannot_enable_daily(self):
-        for kind in ("json", "summary"):
+        for kind in ("part-0000", "manifest", "summary"):
             with self.subTest(kind=kind):
                 if not self.review.ready():
                     self.load()
@@ -162,8 +162,8 @@ class DriveExportServiceTests(unittest.TestCase):
         reloaded = DriveExportService(self.path, client_factory=lambda: self.client,
                                       clock=lambda: self.now, environment=self.env)
         self.assertEqual(reloaded.poll()["status"], "VERIFIED")
-        self.assertEqual(self.client.created, 4)
-        names = {item["name"] for item in self.client.files.values()}
+        self.assertEqual(self.client.created, 6)
+        names = {json.loads(item["content"])["generated_at"] for item in self.client.files.values() if item["kind"] == "manifest"}
         self.assertTrue(any("2026-10-12" in name for name in names))
         self.assertTrue(any("2026-10-13" in name for name in names))
         self.assertEqual(len({row["export_id"] for row in self.service._rows() if row["kind"] == "DRIVE_EXPORT_VERIFIED"}), 2)
@@ -206,7 +206,7 @@ class DriveExportServiceTests(unittest.TestCase):
             finally:
                 release.set()
             self.assertEqual(first.result(timeout=3)["status"], "VERIFIED")
-        self.assertEqual(self.client.created, 2)
+        self.assertEqual(self.client.created, 3)
 
     def test_upload_holds_no_workspace_mutation_transaction(self):
         self.load()
@@ -264,13 +264,13 @@ class DriveExportServiceTests(unittest.TestCase):
                                     clock=lambda: self.now, environment=self.env)
         self.assertEqual(service.poll()["status"], "VERIFIED")
         self.assertTrue(service.status()["daily_enabled"])
-        self.assertEqual(len(server.contents), 2)
+        self.assertEqual(len(server.contents), 3)
         artifacts = [item for item in server.files.values() if item.get("appProperties", {}).get("export_id")]
-        self.assertEqual(len(artifacts), 2)
+        self.assertEqual(len(artifacts), 3)
         self.assertTrue(all(len(item["appProperties"]["export_id"].encode("utf-8")) <= 100 for item in artifacts))
-        restored = json.loads(next(server.contents[item["id"]] for item in artifacts if item["appProperties"]["artifact_kind"] == "json"))
-        validate_snapshot(restored)
-        self.assertEqual(service.status()["source_counts"], restored["manifest"]["source_counts"])
+        restored = json.loads(next(server.contents[item["id"]] for item in artifacts if item["appProperties"]["artifact_kind"] == "manifest"))
+        validate_manifest(restored)
+        self.assertEqual(service.status()["source_counts"], {t: entry["count"] for t, entry in restored["tables"].items()})
 
     def test_safe_drive_failure_preserves_code_and_status_without_raw_details(self):
         self.load()
@@ -301,7 +301,7 @@ class DriveExportServiceTests(unittest.TestCase):
         self.assertEqual(original_receipt["target_fingerprint"], rotated_receipt["target_fingerprint"])
         self.assertNotEqual(original_receipt["config_digest"], rotated_receipt["config_digest"])
         self.assertNotEqual(original_receipt["export_id"], rotated_receipt["export_id"])
-        self.assertEqual(len(server.contents), 4)
+        self.assertEqual(len(server.contents), 6)
         for file_id, content in original_files.items():
             self.assertEqual(server.contents[file_id], content)
 

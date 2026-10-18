@@ -1,0 +1,22 @@
+name: PMI backup compatibility regressions
+on:
+  push:
+    branches: [codex/exporter-interruption-isolation]
+permissions:
+  contents: read
+jobs:
+  regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Disposable databases and changed-format regression coverage
+        run: |
+          docker build -f tests/Resource.Dockerfile -t pmi-resource .
+          docker network create --internal pmi-test-net
+          docker run -d --name pmi-test-db --network pmi-test-net -e POSTGRES_USER=pmi_test -e POSTGRES_PASSWORD=disposable_test_only -e POSTGRES_DB=pmi_export_synthetic postgres:17
+          for n in $(seq 1 30); do docker exec pmi-test-db pg_isready -h 127.0.0.1 -U pmi_test -d pmi_export_synthetic && break; sleep 1; done
+          docker exec pmi-test-db createdb -U pmi_test pmi_restore_synthetic
+          docker run --rm --network container:pmi-test-db --memory 512m --memory-swap 512m -e PMI_EXPORT_TEST_PG=1 pmi-resource python -m unittest test_drive_export_service.DriveExportServiceTests test_exporter_interruption.InterruptionSQLite test_exporter_interruption.InterruptionPostgres -v

@@ -2,6 +2,14 @@ name: PMI isolated complete backup repair
 on:
   push:
     branches: [codex/exporter-interruption-isolation]
+    paths:
+      - 'pmi_backup_parts.py'
+      - 'pmi_drive_export_service.py'
+      - 'tests/parts_resource*'
+      - 'tests/test_backup_parts.py'
+      - 'tests/resource_fixture.py'
+      - 'tests/resource_prepare.py'
+      - 'tests/Resource.Dockerfile' 
 permissions:
   contents: read
 jobs:
@@ -53,4 +61,3 @@ jobs:
             results/*.json
             results/*.jsonl
             results/*.txt
-

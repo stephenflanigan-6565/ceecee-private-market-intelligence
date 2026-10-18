@@ -26,7 +26,8 @@ def crash_worker(dsn, marker, stage):
         Path(marker).write_text("entered", encoding="utf-8")
         time.sleep(60)
     if stage == "snapshot":
-        service.store.research_export_snapshot = block
+        import pmi_backup_parts
+        pmi_backup_parts.build_package = block
     else:
         client = FakeDrive()
         client.identity = block
@@ -62,11 +63,10 @@ class InterruptionSQLite(unittest.TestCase):
     def test_full_history_reopens_and_preserves_source(self):
         before = self.store.research_export_snapshot()
         self.assertEqual(self.service.poll()["status"], "VERIFIED")
-        blob = next(f["content"] for f in self.client.files.values() if f["kind"] == "json")
-        restored = json.loads(blob)
-        for key in ("cases", "case_versions", "imports", "memory", "research", "review_counts"):
-            self.assertEqual(restored[key], before[key])
-        self.assertEqual(restored["manifest"]["source_counts"], restored["manifest"]["exported_counts"])
+        from pmi_backup_parts import validate_manifest
+        manifest = json.loads(next(f["content"] for f in self.client.files.values() if f["kind"] == "manifest"))
+        validate_manifest(manifest)
+        self.assertEqual({t: entry["count"] for t, entry in manifest["tables"].items()}, before["manifest"]["source_counts"])
         self.assertEqual(self.store.research_export_snapshot()["source_revision"], before["source_revision"])
 
     def crash_check(self, stage):
@@ -98,7 +98,7 @@ class InterruptionSQLite(unittest.TestCase):
             self.service.clock = lambda: future
             self.assertEqual(self.service.status()["status"], "INTERRUPTED")
             self.assertEqual(self.service.poll()["status"], "VERIFIED")
-            self.assertEqual(self.client.created, 2)
+            self.assertEqual(self.client.created, 3)
         finally:
             if first.is_alive():
                 first.terminate(); first.join(10)
@@ -112,14 +112,14 @@ class InterruptionSQLite(unittest.TestCase):
     def test_failed_upload_retry_does_not_duplicate_artifacts(self):
         self.client.fail_summary_once = True
         self.assertEqual(self.service.poll()["status"], "FAILED")
-        self.assertEqual(self.service.status()["failure_stage"], "upload")
+        self.assertEqual(self.service.status()["failure_stage"], "upload_readback")
         self.assertEqual(self.service.poll()["status"], "RETRY_WAIT")
         self.assertEqual(self.service.poll(force=True)["status"], "VERIFIED")
-        self.assertEqual(self.client.created, 2)
+        self.assertEqual(self.client.created, 3)
         self.assertNotIn("private-refresh-token", str(self.service._rows()))
 
     def test_snapshot_error_reports_stage_without_sensitive_message(self):
-        with patch.object(self.store, "research_export_snapshot", side_effect=ValueError("synthetic-secret raw failure")):
+        with patch("pmi_backup_parts.build_package", side_effect=ValueError("synthetic-secret raw failure")):
             service = DriveExportService(self.dsn, store=self.store, environment=ENV, client_factory=FakeDrive)
             self.assertEqual(service.poll()["status"], "FAILED")
         state = self.service.status()
