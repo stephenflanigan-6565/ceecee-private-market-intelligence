@@ -137,8 +137,9 @@ class DriveExportServiceTests(unittest.TestCase):
         self.assertEqual(self.client.created, 2)
         self.assertEqual(len(self.client.files), 2)
         receipts = self.service._rows()
-        self.assertEqual(receipts[0]["export_id"], receipts[-1]["export_id"])
-        self.assertEqual(receipts[0]["generated_at"], receipts[-1]["generated_at"])
+        artifact_claim = next(row for row in receipts if row.get("export_id"))
+        self.assertEqual(artifact_claim["export_id"], receipts[-1]["export_id"])
+        self.assertEqual(artifact_claim["generated_at"], receipts[-1]["generated_at"])
 
     def test_readback_mismatch_cannot_enable_daily(self):
         for kind in ("json", "summary"):

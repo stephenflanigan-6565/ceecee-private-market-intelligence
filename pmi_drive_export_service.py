@@ -193,7 +193,16 @@ class DriveExportService:
                 return {"status": "IDLE", "daily_enabled": True}
             run_id = "drive_" + uuid.uuid4().hex
             phase = "identity"
-            claim = None
+            # Persist the attempt before identity, snapshot construction or JSON
+            # serialization. Abrupt process death must leave a bounded lease
+            # and an INTERRUPTED status, not look like an export never started.
+            # Fail closed if this durable write fails: do not contact Drive.
+            claim = self._append("DRIVE_EXPORT_RUNNING", {
+                "outcome": "RUNNING", "run_id": run_id,
+                "worker_id": worker_id or "manual", "mode": "DAILY" if verified else "BOOTSTRAP",
+                "config_digest": config_digest, "format": FORMAT_VERSION,
+                "lease_until": _stamp(now + timedelta(seconds=LEASE_SECONDS)),
+            }, now)
             try:
                 client = self.client_factory()
                 identity = client.identity()
